@@ -17,21 +17,16 @@
   /* ── CSS injection ────────────────────────────────────────────────── */
 
   function injectThemeCSS() {
-    const files = ["colors.css", "user.css"];
+    // CSS is embedded at build time in css-data.js (runs before this file).
+    // No fetch, no network, no WAR – just instant injection.
+    const cssData = window.__clearThemeCSS || {};
+    const target = document.head || document.documentElement;
 
-    for (const file of files) {
-      fetch(chrome.runtime.getURL(file))
-        .then((r) => r.text())
-        .then((css) => {
-          const style = document.createElement("style");
-          style.setAttribute("data-clear-theme", file);
-          style.textContent = css;
-          const target = document.head || document.documentElement;
-          target.appendChild(style);
-        })
-        .catch((err) =>
-          console.error("[Clear Theme] Failed to load " + file + ":", err),
-        );
+    for (const [name, css] of Object.entries(cssData)) {
+      const style = document.createElement("style");
+      style.setAttribute("data-clear-theme", name);
+      style.textContent = css;
+      target.appendChild(style);
     }
   }
 
