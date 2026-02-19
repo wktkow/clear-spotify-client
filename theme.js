@@ -43,6 +43,10 @@
       settings.nyanCat !== false,
     );
     document.body.classList.toggle("clear-sonic", settings.sonic !== false);
+    document.body.classList.toggle(
+      "clear-auto-now-playing",
+      settings.autoNowPlaying !== false,
+    );
   }
 
   applySettings();

@@ -720,8 +720,9 @@ aside[aria-label="Now playing view"]:has(.W3E0IT3_STcazjTeyOJa)
   padding-top: 4rem;
 }
 
-/* Now Playing Bar */
-button[data-restore-focus-key="now_playing_view"] {
+/* Now Playing Bar - hide button when auto now playing is on */
+body.clear-auto-now-playing
+  button[data-restore-focus-key="now_playing_view"] {
   display: none;
 }
 
