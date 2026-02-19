@@ -298,4 +298,65 @@
   }
 
   waitAndInit();
+
+  // --- Search bar auto-hide timer ---
+  function initSearchBarTimer() {
+    const navBar = document.getElementById("global-nav-bar");
+    if (!navBar) {
+      setTimeout(initSearchBarTimer, 500);
+      return;
+    }
+
+    let hideTimer = null;
+
+    function showBar(delay) {
+      clearTimeout(hideTimer);
+      navBar.classList.add("clear-nav-forced");
+      hideTimer = setTimeout(() => {
+        navBar.classList.remove("clear-nav-forced");
+      }, delay);
+    }
+
+    function hideBarNow() {
+      clearTimeout(hideTimer);
+      navBar.classList.remove("clear-nav-forced");
+      // Blur the input so CSS :hover takes back over cleanly
+      const input = navBar.querySelector("input");
+      if (input) input.blur();
+    }
+
+    function attachListeners() {
+      const input = navBar.querySelector("input");
+      if (!input) return false;
+
+      input.addEventListener("click", () => showBar(30000));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          hideBarNow();
+        } else {
+          showBar(30000);
+        }
+      });
+
+      // Search icon click — find the submit/search button near the input
+      const searchBtn = navBar.querySelector(
+        'button[aria-label="Search"], button[data-testid="search-icon"]',
+      );
+      if (searchBtn) {
+        searchBtn.addEventListener("click", () => hideBarNow());
+      }
+
+      return true;
+    }
+
+    // Input may not exist yet, observe for it
+    if (!attachListeners()) {
+      const obs = new MutationObserver(() => {
+        if (attachListeners()) obs.disconnect();
+      });
+      obs.observe(navBar, { childList: true, subtree: true });
+    }
+  }
+
+  initSearchBarTimer();
 })();
