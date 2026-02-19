@@ -1,4 +1,5 @@
 AGENTS.md
 chrome-extension/build/
-chrome-extension/dist/*.mhtml
+chrome-extension/dist/
+*.mhtml
 *.html
