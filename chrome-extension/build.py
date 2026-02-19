@@ -66,7 +66,7 @@ def create_manifest() -> dict:
         "content_scripts": [
             {
                 "matches": ["https://open.spotify.com/*"],
-                "css": ["colors.css", "user.css"],
+                "css": ["theme.css"],
                 "js": ["guard.js", "theme.js"],
                 "run_at": "document_start",
             }
@@ -145,19 +145,16 @@ def build() -> None:
         user_css = f.read()
     print("  ✓ user.css")
 
-    # 3. Write CSS files — Chrome injects them natively via manifest,
-    #    bypassing Content Security Policy restrictions.
-    #    add_important() ensures our rules win the cascade even though
-    #    Chrome loads manifest CSS before Spotify's own stylesheets.
-    colors_css_imp = add_important(colors_css)
-    with open(os.path.join(BUILD_DIR, "colors.css"), "w") as f:
-        f.write(colors_css_imp)
-    print("  ✓ colors.css (with !important)")
-
-    user_css_imp = add_important(user_css)
-    with open(os.path.join(BUILD_DIR, "user.css"), "w") as f:
-        f.write(user_css_imp)
-    print(f"  ✓ user.css (with !important, {user_css_imp.count('!important')} declarations)")
+    # 3. Combine colors + user CSS into one theme.css file.
+    #    Chrome silently drops the second file when manifest has two CSS
+    #    entries, so we merge them.  add_important() ensures our rules
+    #    beat Spotify's regardless of load order.
+    marker = "/* clear-theme-marker */\nhtml { --clear-ext-loaded: 1 !important; }\n\n"
+    combined = marker + add_important(colors_css) + "\n\n" + add_important(user_css)
+    with open(os.path.join(BUILD_DIR, "theme.css"), "w") as f:
+        f.write(combined)
+    important_count = combined.count('!important')
+    print(f"  ✓ theme.css (combined, {important_count} declarations, {len(combined)} bytes)")
 
     # 4. Copy theme.js
     shutil.copy(os.path.join(REPO_ROOT, "theme.js"), BUILD_DIR)
