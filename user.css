@@ -1463,11 +1463,12 @@ button.main-playPauseButton-button {
   height: 1rem;
   border-radius: 9999px;
   background-color: var(--spice-text);
-  transition: transform 0.15s ease;
+  transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
 .clear-settings-toggle--on .clear-settings-toggle-knob {
   transform: translateX(1rem);
+  background-color: var(--spice-main);
 }
 
 .Root__now-playing-bar {
