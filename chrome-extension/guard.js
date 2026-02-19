@@ -14,9 +14,9 @@
 
   const DISABLED_KEY = "clear-extension-disabled";
 
-  /* ── Diagnostics ──────────────────────────────────────────────────── */
+  /* ── Diagnostics v5 ─────────────────────────────────────────────── */
 
-  console.log("[Clear Theme] guard.js v4-combined loaded");
+  console.log("[Clear Theme] guard.js v5-deep loaded");
 
   function checkTheme(label) {
     const marker = getComputedStyle(document.documentElement)
@@ -29,23 +29,72 @@
       `[Clear Theme] ${label}: marker=${marker} --spice-text=${spiceText} sheets=${document.styleSheets.length}`,
     );
 
-    // Enumerate all <style> elements to see what Chrome actually injected
-    const styles = document.querySelectorAll("style");
-    console.log(`[Clear Theme]   <style> elements in DOM: ${styles.length}`);
-    styles.forEach((s, i) => {
-      const len = s.textContent.length;
-      const preview = s.textContent.substring(0, 60).replace(/\n/g, " ");
-      const attrs = [...s.attributes]
-        .map((a) => `${a.name}="${a.value}"`)
-        .join(" ");
+    // Find OUR stylesheet in document.styleSheets
+    for (let i = 0; i < document.styleSheets.length; i++) {
+      const sheet = document.styleSheets[i];
+      try {
+        const rules = sheet.cssRules;
+        if (!rules) continue;
+        for (let j = 0; j < Math.min(rules.length, 10); j++) {
+          if (
+            rules[j].cssText &&
+            rules[j].cssText.includes("--clear-ext-loaded")
+          ) {
+            console.log(
+              `[Clear Theme]   OUR SHEET: index=${i} rules=${rules.length} href=${sheet.href} ownerNode=${sheet.ownerNode?.tagName || "none"} disabled=${sheet.disabled}`,
+            );
+            for (let k = 0; k < Math.min(rules.length, 5); k++) {
+              console.log(
+                `[Clear Theme]     rule[${k}]: ${rules[k].cssText.substring(0, 120)}`,
+              );
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        /* cross-origin */
+      }
+    }
+
+    // Check computed styles on key elements
+    const navBar = document.getElementById("global-nav-bar");
+    if (navBar) {
+      const cs = getComputedStyle(navBar);
       console.log(
-        `[Clear Theme]   style[${i}] ${attrs || "(no attrs)"} len=${len} "${preview}..."`,
+        `[Clear Theme]   #global-nav-bar: opacity=${cs.opacity} position=${cs.position} display=${cs.display}`,
       );
-    });
+    } else {
+      console.log(`[Clear Theme]   #global-nav-bar: NOT IN DOM`);
+    }
+
+    const mainView = document.querySelector(".Root__main-view");
+    if (mainView) {
+      const cs = getComputedStyle(mainView);
+      console.log(
+        `[Clear Theme]   .Root__main-view: borderRadius=${cs.borderRadius} border=${cs.border.substring(0, 60)}`,
+      );
+    } else {
+      console.log(`[Clear Theme]   .Root__main-view: NOT IN DOM`);
+    }
+
+    const navBarEl = document.querySelector(".Root__nav-bar");
+    if (navBarEl) {
+      const cs = getComputedStyle(navBarEl);
+      console.log(
+        `[Clear Theme]   .Root__nav-bar: gridArea=${cs.gridArea}`,
+      );
+    }
+
+    if (document.body) {
+      const cs = getComputedStyle(document.body);
+      console.log(
+        `[Clear Theme]   body: color=${cs.color} classList=${document.body.className.substring(0, 80)}`,
+      );
+    }
   }
 
-  setTimeout(() => checkTheme("AT 2s"), 2000);
-  setTimeout(() => checkTheme("AT 8s"), 8000);
+  setTimeout(() => checkTheme("AT 3s"), 3000);
+  setTimeout(() => checkTheme("AT 10s"), 10000);
 
   /* ── CSS toggle ───────────────────────────────────────────────────── */
 
@@ -67,7 +116,10 @@
         // Check inline styles for our marker
         if (!sheet.href && sheet.cssRules) {
           for (let i = 0; i < Math.min(sheet.cssRules.length, 5); i++) {
-            if (sheet.cssRules[i].cssText && sheet.cssRules[i].cssText.includes("--clear-ext-loaded")) {
+            if (
+              sheet.cssRules[i].cssText &&
+              sheet.cssRules[i].cssText.includes("--clear-ext-loaded")
+            ) {
               sheet.disabled = disabled;
               found++;
               break;
