@@ -12,6 +12,7 @@ Usage:
 import configparser
 import json
 import os
+import re
 import shutil
 import zipfile
 
@@ -73,6 +74,59 @@ def create_manifest() -> dict:
     }
 
 
+def add_important(css: str) -> str:
+    """Add !important to every CSS declaration that doesn't already have it.
+
+    Chrome injects manifest CSS before Spotify's own stylesheets, so our
+    rules lose the cascade battle at equal specificity.  Adding !important
+    ensures our declarations always win, regardless of load order.
+
+    On the desktop Spicetify side the original user.css (without !important
+    everywhere) is used directly — this transform only affects the Chrome
+    extension build output.
+    """
+    lines = css.split("\n")
+    result: list[str] = []
+    in_comment = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # ── multi-line comment tracking ──────────────────────────────
+        if in_comment:
+            if "*/" in stripped:
+                in_comment = False
+            result.append(line)
+            continue
+        if "/*" in stripped and "*/" not in stripped:
+            in_comment = True
+            result.append(line)
+            continue
+
+        # ── skip non-declaration lines ───────────────────────────────
+        if (
+            not stripped
+            or stripped.startswith("/*")       # single-line comment
+            or stripped.startswith("*")        # doc-comment continuation
+            or stripped.startswith("//")       # non-standard comment
+            or stripped.endswith("{")           # selector / @-rule opening
+            or stripped == "}"                 # closing brace
+            or stripped.startswith("@")        # @media, @keyframes, etc.
+            or "!important" in stripped        # already has it
+            or ";" not in stripped             # not a declaration
+            or ":" not in stripped             # not a declaration
+        ):
+            result.append(line)
+            continue
+
+        # ── add !important before the last semicolon ─────────────────
+        idx = line.rindex(";")
+        line = line[:idx] + " !important;" + line[idx + 1 :]
+        result.append(line)
+
+    return "\n".join(result)
+
+
 def build() -> None:
     # Clean previous builds
     for d in (BUILD_DIR, DIST_DIR):
@@ -93,13 +147,17 @@ def build() -> None:
 
     # 3. Write CSS files — Chrome injects them natively via manifest,
     #    bypassing Content Security Policy restrictions.
+    #    add_important() ensures our rules win the cascade even though
+    #    Chrome loads manifest CSS before Spotify's own stylesheets.
+    colors_css_imp = add_important(colors_css)
     with open(os.path.join(BUILD_DIR, "colors.css"), "w") as f:
-        f.write(colors_css)
-    print("  ✓ colors.css")
+        f.write(colors_css_imp)
+    print("  ✓ colors.css (with !important)")
 
+    user_css_imp = add_important(user_css)
     with open(os.path.join(BUILD_DIR, "user.css"), "w") as f:
-        f.write(user_css)
-    print("  ✓ user.css (copied to build)")
+        f.write(user_css_imp)
+    print(f"  ✓ user.css (with !important, {user_css_imp.count('!important')} declarations)")
 
     # 4. Copy theme.js
     shutil.copy(os.path.join(REPO_ROOT, "theme.js"), BUILD_DIR)
