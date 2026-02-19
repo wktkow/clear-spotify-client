@@ -1,4 +1,14 @@
 (async () => {
+  // Early splash disable – hide overlay before Spicetify even loads
+  try {
+    const earlySettings = JSON.parse(
+      localStorage.getItem("clear-theme-settings") || "{}",
+    );
+    if (earlySettings.splashScreen === false) {
+      document.body.classList.add("clear-no-splash");
+    }
+  } catch {}
+
   while (!Spicetify?.React || !Spicetify?.ReactDOM || !Spicetify?.Platform) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -193,6 +203,11 @@
       "Dim On Pause",
       "Dim Sonic and Nyan Cat when playback is paused",
     );
+    addToggle(
+      "splashScreen",
+      "Startup Splash",
+      "Show the clear. splash screen on startup",
+    );
 
     // Close on overlay click
     overlay.addEventListener("click", (e) => {
@@ -382,4 +397,43 @@
   }
 
   initSearchBarTimer();
+
+  // --- Fade out startup splash (wait for full page load + images) ---
+  if (loadSettings().splashScreen !== false) {
+    if (document.readyState !== "complete") {
+      await new Promise((resolve) =>
+        window.addEventListener("load", resolve, { once: true }),
+      );
+    }
+    // Wait for Spotify's React UI to finish drawing
+    while (
+      !document.querySelector(".Root__main-view") ||
+      !document.querySelector(
+        ".main-nowPlayingBar-nowPlayingBar, .Root__now-playing-bar",
+      )
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    // Extra buffer for images and final paints
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    // Show "clear." branding text
+    const splashText = document.createElement("div");
+    splashText.id = "clear-splash-text";
+    splashText.textContent = "clear.";
+    document.body.appendChild(splashText);
+
+    // Fade text in over 0.6s, hold for 0.5s, then fade out
+    splashText.classList.add("clear-text-in");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    splashText.classList.remove("clear-text-in");
+    splashText.style.opacity = "1";
+    splashText.classList.add("clear-text-out");
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    splashText.remove();
+
+    // Now fade out the black background over 1s
+    document.body.classList.add("clear-bg-out");
+  }
 })();
