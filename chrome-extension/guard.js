@@ -1,10 +1,11 @@
 /**
  * Clear Theme – Chrome Extension Login Guard
  *
- * Runs before theme.js. Checks whether the user is logged into Spotify.
- * If not logged in, shows a persistent banner explaining they can disable
- * the extension until they log in. Sets a localStorage flag that theme.js
- * checks before initialising.
+ * Runs before theme.js at document_start. Handles two things:
+ *   1. Conditionally injects the theme CSS (colors.css + user.css).
+ *      CSS is NOT declared in the manifest so we can skip it when disabled.
+ *   2. Checks whether the user is logged into Spotify. If not, shows a
+ *      persistent banner with a "Disable until login" button.
  *
  * This file is ONLY included in the Chrome extension build.
  */
@@ -13,7 +14,22 @@
 
   const DISABLED_KEY = "clear-extension-disabled";
 
-  // If user previously clicked "Disable", block the theme until logged in.
+  /* ── CSS injection ────────────────────────────────────────────────── */
+
+  function injectThemeCSS() {
+    const files = ["colors.css", "user.css"];
+    const target = document.head || document.documentElement;
+    for (const file of files) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = chrome.runtime.getURL(file);
+      target.appendChild(link);
+    }
+  }
+
+  /* ── Disabled state ───────────────────────────────────────────────── */
+
+  // If user previously clicked "Disable", block CSS + JS until logged in.
   // Once they log in, the flag is automatically cleared.
   if (localStorage.getItem(DISABLED_KEY) === "true") {
     window.__clearExtensionDisabled = true;
@@ -28,8 +44,11 @@
       }
     }, 2000);
 
-    return; // Don't show the banner again, theme.js will exit early
+    return; // No CSS injected, theme.js will also exit early
   }
+
+  // Not disabled → inject theme styles immediately (before DOM paints)
+  injectThemeCSS();
 
   function isLoggedIn() {
     // Logged-in Spotify has a user widget; logged-out pages show login buttons

@@ -65,9 +65,14 @@ def create_manifest() -> dict:
         "content_scripts": [
             {
                 "matches": ["https://open.spotify.com/*"],
-                "css": ["colors.css", "user.css"],
                 "js": ["guard.js", "theme.js"],
                 "run_at": "document_start",
+            }
+        ],
+        "web_accessible_resources": [
+            {
+                "resources": ["colors.css", "user.css"],
+                "matches": ["https://open.spotify.com/*"],
             }
         ],
     }
