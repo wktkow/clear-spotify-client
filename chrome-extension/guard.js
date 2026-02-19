@@ -19,67 +19,18 @@
   function injectThemeCSS() {
     // CSS is embedded at build time in css-data.js (runs before this file).
     // No fetch, no network, no WAR – just instant injection.
+    //
+    // We use document.adoptedStyleSheets instead of <style> elements.
+    // Adopted stylesheets are spec-guaranteed to come AFTER all <link> and
+    // <style> elements in the cascade, so our rules always win at equal
+    // specificity — no DOM re-ordering or MutationObservers needed.
     const cssData = window.__clearThemeCSS || {};
-    const target = document.head || document.documentElement;
 
     for (const [name, css] of Object.entries(cssData)) {
-      const style = document.createElement("style");
-      style.setAttribute("data-clear-theme", name);
-      style.textContent = css;
-      target.appendChild(style);
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     }
-
-    // Our <style> tags are injected at document_start, so they land at the
-    // TOP of <head> — before Spotify's own stylesheets.  For equal-specificity
-    // rules the last declaration wins, meaning Spotify's later CSS overrides
-    // ours.  Fix: keep our styles at the END of <head> at all times.
-    function promoteStyles() {
-      const head = document.head;
-      if (!head) return;
-      head
-        .querySelectorAll("style[data-clear-theme]")
-        .forEach((s) => head.appendChild(s));
-    }
-
-    // Re-append once the initial page CSS has loaded
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", promoteStyles, {
-        once: true,
-      });
-    } else {
-      promoteStyles();
-    }
-
-    // Spotify lazy-loads component CSS (<link> tags).  Whenever a new
-    // stylesheet appears in <head>, move ours back to the end so we always win.
-    function watchHead() {
-      if (!document.head) {
-        // <head> doesn't exist yet at document_start; wait for it
-        new MutationObserver((_m, obs) => {
-          if (document.head) {
-            obs.disconnect();
-            observeHead();
-          }
-        }).observe(document.documentElement, { childList: true });
-      } else {
-        observeHead();
-      }
-    }
-    function observeHead() {
-      new MutationObserver((mutations) => {
-        // Only react when a <link> stylesheet is added (not our own styles)
-        const hasNewSheet = mutations.some((m) =>
-          [...m.addedNodes].some(
-            (n) =>
-              n.nodeName === "LINK" &&
-              n.rel === "stylesheet" &&
-              !n.hasAttribute("data-clear-theme"),
-          ),
-        );
-        if (hasNewSheet) promoteStyles();
-      }).observe(document.head, { childList: true });
-    }
-    watchHead();
   }
 
   /* ── Disabled state ───────────────────────────────────────────────── */
