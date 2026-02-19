@@ -47,6 +47,60 @@
 
   applySettings();
 
+  // --- Auto Now Playing View ---
+  function isNowPlayingOpen() {
+    return !!document.querySelector('aside[aria-label="Now playing view"]');
+  }
+
+  function clickNowPlayingButton() {
+    const btn = document.querySelector(
+      'button[data-restore-focus-key="now_playing_view"]',
+    );
+    if (btn) btn.click();
+  }
+
+  function initAutoNowPlaying() {
+    // Close now playing view on app startup
+    function tryCloseOnStartup(attempts) {
+      if (isNowPlayingOpen()) {
+        clickNowPlayingButton();
+      } else if (attempts > 0) {
+        setTimeout(() => tryCloseOnStartup(attempts - 1), 500);
+      }
+    }
+    tryCloseOnStartup(10);
+
+    // Open now playing view on each track change
+    Spicetify.Player.addEventListener("songchange", () => {
+      const settings = loadSettings();
+      if (settings.autoNowPlaying === false) return;
+      setTimeout(() => {
+        if (!isNowPlayingOpen()) {
+          clickNowPlayingButton();
+        }
+      }, 1000);
+    });
+
+    // Open now playing view when playback starts
+    Spicetify.Player.addEventListener("onplaypause", () => {
+      const settings = loadSettings();
+      if (settings.autoNowPlaying === false) return;
+      setTimeout(() => {
+        if (Spicetify.Player.isPlaying()) {
+          if (!isNowPlayingOpen()) {
+            clickNowPlayingButton();
+          }
+        } else {
+          if (isNowPlayingOpen()) {
+            clickNowPlayingButton();
+          }
+        }
+      }, 1000);
+    });
+  }
+
+  initAutoNowPlaying();
+
   function openSettingsModal() {
     // Don't double-create
     if (document.querySelector(".clear-settings-overlay")) {
@@ -111,6 +165,11 @@
       "Rainbow progress bar with Nyan Cat slider",
     );
     addToggle("sonic", "Sonic Dancing", "Dancing Sonic above the progress bar");
+    addToggle(
+      "autoNowPlaying",
+      "Auto Now Playing View",
+      "Automatically open Now Playing panel on track change",
+    );
 
     // Close on overlay click
     overlay.addEventListener("click", (e) => {

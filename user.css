@@ -721,9 +721,9 @@ aside[aria-label="Now playing view"]:has(.W3E0IT3_STcazjTeyOJa)
 }
 
 /* Now Playing Bar */
-/* button[data-restore-focus-key="now_playing_view"] {
+button[data-restore-focus-key="now_playing_view"] {
   display: none;
-} */
+}
 
 footer.main-nowPlayingBar-container {
   gap: var(--gap-sm);
