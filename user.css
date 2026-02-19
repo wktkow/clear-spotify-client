@@ -721,8 +721,7 @@ aside[aria-label="Now playing view"]:has(.W3E0IT3_STcazjTeyOJa)
 }
 
 /* Now Playing Bar - hide button when auto now playing is on */
-body.clear-auto-now-playing
-  button[data-restore-focus-key="now_playing_view"] {
+body.clear-auto-now-playing button[data-restore-focus-key="now_playing_view"] {
   display: none;
 }
 
@@ -1742,6 +1741,21 @@ body.clear-sonic .player-controls .playback-progressbar::before {
   image-rendering: pixelated;
   background-size: 32px 32px;
   background-image: url("https://media.tenor.com/pWqGD2PHY3kAAAAj/fortnite-dance-sonic.gif");
+}
+
+/* Keep Sonic and Nyan Cat visible but dimmed when paused (if enabled) */
+body.clear-paused.clear-pause-dim.clear-sonic
+  .player-controls
+  .playback-progressbar::before {
+  opacity: 0.5;
+}
+body.clear-paused.clear-pause-dim.clear-nyan-cat
+  .playback-bar
+  .x-progressBar-progressBarBg,
+body.clear-paused.clear-pause-dim.clear-nyan-cat
+  .playback-bar
+  .progress-bar__slider {
+  opacity: 0.5;
 }
 
 /* --- Snippet: Fix 'Liked' Icon --- */

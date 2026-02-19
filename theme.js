@@ -47,6 +47,10 @@
       "clear-auto-now-playing",
       settings.autoNowPlaying !== false,
     );
+    document.body.classList.toggle(
+      "clear-pause-dim",
+      settings.pauseDim !== false,
+    );
   }
 
   applySettings();
@@ -104,6 +108,16 @@
   }
 
   initAutoNowPlaying();
+
+  // --- Pause state class on body ---
+  function updatePausedState() {
+    document.body.classList.toggle(
+      "clear-paused",
+      !Spicetify.Player.isPlaying(),
+    );
+  }
+  updatePausedState();
+  Spicetify.Player.addEventListener("onplaypause", updatePausedState);
 
   function openSettingsModal() {
     // Don't double-create
@@ -173,6 +187,11 @@
       "autoNowPlaying",
       "Auto Now Playing View",
       "Automatically open Now Playing panel on track change",
+    );
+    addToggle(
+      "pauseDim",
+      "Dim On Pause",
+      "Dim Sonic and Nyan Cat when playback is paused",
     );
 
     // Close on overlay click
