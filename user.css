@@ -1230,12 +1230,18 @@ button.main-playPauseButton-button {
   display: flex !important;
   flex-wrap: nowrap !important;
   align-items: center !important;
-  gap: 0.5rem !important;
+  gap: 0.25rem !important;
 }
 /* Force all direct children into the flex flow (prevents marketplace icon overlap) */
 #global-nav-bar > * {
   position: relative !important;
   flex-shrink: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+/* Hide all native nav children except our kebab and the search section */
+#global-nav-bar > *:not(.clear-kebab-menu):not(.main-globalNav-searchSection) {
+  display: none !important;
 }
 /* Force search input container to stay expanded */
 #global-nav-bar .main-globalNav-searchInputContainer {
@@ -1249,6 +1255,99 @@ button.main-playPauseButton-button {
   opacity: 1;
   transition-delay: 0s;
 }
+
+/* --- Kebab Menu (3-dots) --- */
+.clear-kebab-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.clear-kebab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: var(--default-border);
+  border-radius: var(--border-radius-md);
+  background-color: var(--spice-main);
+  color: var(--spice-subtext);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.clear-kebab-btn:hover {
+  color: var(--spice-text);
+  background-color: var(--spice-button-hover);
+}
+
+.clear-kebab-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  min-width: 10rem;
+  padding: 0.25rem;
+  background-color: var(--spice-main);
+  border: var(--default-border);
+  border-radius: var(--border-radius-md);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px) scale(0.97);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0.15s;
+  z-index: 20;
+}
+
+.clear-kebab-dropdown--open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.clear-kebab-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  border-radius: calc(var(--border-radius-md) - 2px);
+  background: none;
+  color: var(--spice-subtext);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+  text-align: left;
+}
+
+.clear-kebab-item:hover {
+  background-color: var(--spice-button-hover);
+  color: var(--spice-text);
+}
+
+.clear-kebab-item-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.clear-kebab-item:hover .clear-kebab-item-icon {
+  opacity: 1;
+}
+
+.clear-kebab-item-label {
+  white-space: nowrap;
+}
+
 .Root__now-playing-bar {
   transform: translateY(16px);
 }
