@@ -34,8 +34,15 @@
 
   function applySettings() {
     const settings = loadSettings();
-    const thickBars = settings.thickBars !== false; // default on
-    document.body.classList.toggle("clear-thick-bars", thickBars);
+    document.body.classList.toggle(
+      "clear-thick-bars",
+      settings.thickBars !== false,
+    );
+    document.body.classList.toggle(
+      "clear-nyan-cat",
+      settings.nyanCat !== false,
+    );
+    document.body.classList.toggle("clear-sonic", settings.sonic !== false);
   }
 
   applySettings();
@@ -71,27 +78,39 @@
     header.appendChild(closeBtn);
     modal.appendChild(header);
 
-    // Thick Bars toggle
-    const thickBarsOn = settings.thickBars !== false;
-    const row = document.createElement("div");
-    row.className = "clear-settings-row";
-    row.innerHTML = `<div><div class="clear-settings-row-label">Thick Progress Bars</div><div class="clear-settings-row-desc">Make playback and volume bars thicker</div></div>`;
+    // Toggle rows
+    function addToggle(key, label, desc) {
+      const isOn = settings[key] !== false;
+      const row = document.createElement("div");
+      row.className = "clear-settings-row";
+      row.innerHTML = `<div><div class="clear-settings-row-label">${label}</div><div class="clear-settings-row-desc">${desc}</div></div>`;
+      const toggle = document.createElement("button");
+      toggle.className =
+        "clear-settings-toggle" + (isOn ? " clear-settings-toggle--on" : "");
+      toggle.innerHTML = `<span class="clear-settings-toggle-knob"></span>`;
+      toggle.addEventListener("click", () => {
+        const s = loadSettings();
+        const newVal = s[key] === false;
+        s[key] = newVal;
+        saveSettings(s);
+        toggle.classList.toggle("clear-settings-toggle--on", newVal);
+        applySettings();
+      });
+      row.appendChild(toggle);
+      modal.appendChild(row);
+    }
 
-    const toggle = document.createElement("button");
-    toggle.className =
-      "clear-settings-toggle" +
-      (thickBarsOn ? " clear-settings-toggle--on" : "");
-    toggle.innerHTML = `<span class="clear-settings-toggle-knob"></span>`;
-    toggle.addEventListener("click", () => {
-      const s = loadSettings();
-      const newVal = s.thickBars === false; // flip
-      s.thickBars = newVal;
-      saveSettings(s);
-      toggle.classList.toggle("clear-settings-toggle--on", newVal);
-      applySettings();
-    });
-    row.appendChild(toggle);
-    modal.appendChild(row);
+    addToggle(
+      "thickBars",
+      "Thick Progress Bars",
+      "Make playback and volume bars thicker",
+    );
+    addToggle(
+      "nyanCat",
+      "Nyan Cat Progress Bar",
+      "Rainbow progress bar with Nyan Cat slider",
+    );
+    addToggle("sonic", "Sonic Dancing", "Dancing Sonic above the progress bar");
 
     // Close on overlay click
     overlay.addEventListener("click", (e) => {
