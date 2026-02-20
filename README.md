@@ -28,15 +28,23 @@ Opinionated spicetify theme reducing screen clutter and improving readability
 
 ### On Windows:
 
-1. Install [spicetify](https://spicetify.app/) if you do not have it yet.
+1. Open Powershell as administrator
 
-2. Open powershell as administrator
+2. Copy and paste the below code snippet:
 
-3. Copy and paste the below code snippet:
+```powershell
+iwr -useb https://raw.githubusercontent.com/spicetify/cli/main/install.ps1 | iex
+```
+
+(Installs [spicetify](https://spicetify.app/))
+
+3.  Copy and paste the below code snippet:
 
 ```powershell
 <>
 ```
+
+(Installs [Clear Spotify](https://github.com/wktkow/clear-spotify-theme))
 
 4. Enjoy!
 
