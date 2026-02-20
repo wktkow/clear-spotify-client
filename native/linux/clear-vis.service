@@ -1,6 +1,6 @@
 [Unit]
 Description=Clear Spotify Visualizer Audio Bridge
-Documentation=https://github.com/wktkow/clear-spotify-theme
+Documentation=https://github.com/wktkow/clear-spotify-client
 After=pulseaudio.service pipewire-pulse.service
 
 [Service]

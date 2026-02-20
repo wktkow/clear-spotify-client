@@ -5,7 +5,7 @@
 2. Run the installer:
 
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/wktkow/clear-spotify-theme/main/sh/install.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/sh/install.sh | bash
    ```
 
    (Detects existing install, fully removes it, downloads fresh theme files, applies, and launches Spotify)

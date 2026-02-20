@@ -1,13 +1,13 @@
 #!/bin/bash
-# Clear Spotify Theme — Linux installer
-# Detects existing installation and fully removes it before a clean reinstall.
-# Kills Spotify, restores vanilla state, downloads fresh theme files, applies,
+# Clear Spotify Client — Linux installer
+# All-in-one: detects existing installation, fully removes it, installs fresh.
+# Kills Spotify, restores vanilla state, downloads theme files, applies,
 # builds the audio visualizer daemon (vis-capture), and launches Spotify.
 # Requires: spicetify, curl, g++, libpulse-dev (for visualizer)
 
 set -euo pipefail
 
-REPO="wktkow/clear-spotify-theme"
+REPO="wktkow/clear-spotify-client"
 BRANCH="main"
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 THEME_FILES=("user.css" "color.ini" "theme.js")
@@ -274,6 +274,6 @@ else
 fi
 
 echo ""
-green "Clear theme installed successfully!"
+green "Clear installed successfully!"
 green "Enjoy your clean Spotify experience."
 echo ""

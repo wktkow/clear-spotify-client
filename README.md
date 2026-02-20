@@ -16,31 +16,33 @@ Opinionated Spotify client reducing screen clutter and improving readability.
 
 ### On Windows:
 
-0. Important: make sure you have spotify installed already and you are logged in.
+0. Make sure you have Spotify installed and you are logged in.
 
-1. Open Powershell as administrator
-
-2. Copy and paste the below code snippet:
+1. Open PowerShell and paste:
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/spicetify/cli/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/powershell/install.ps1 | iex
 ```
 
-(Installs [spicetify](https://spicetify.app/))
+(Installs spicetify if needed, removes any previous Clear install, downloads fresh files, applies, and launches Spotify)
 
-3.  Copy and paste the below code snippet:
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-theme/main/powershell/install.ps1 | iex
-```
-
-(Installs [Clear Spotify](https://github.com/wktkow/clear-spotify-theme) — detects existing install, fully removes it, downloads fresh theme files, applies, and launches Spotify)
-
-4. Enjoy!
+2. Enjoy!
 
 ### On Linux:
 
 [click here](/docs/linux-install.md)
+
+## Uninstall
+
+### On Windows:
+
+Open PowerShell and paste:
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/powershell/uninstall.ps1 | iex
+```
+
+(Restores Spotify to vanilla, removes all Clear files and the visualizer daemon)
 
 ## Potential Roadmap
 

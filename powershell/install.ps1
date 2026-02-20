@@ -1,24 +1,24 @@
 <#
 .SYNOPSIS
-    Installs the Clear Spotify theme for spicetify on Windows.
+    Installs the Clear Spotify client mod on Windows.
 .DESCRIPTION
-    - Detects existing Clear installation and fully removes it
+    All-in-one installer that handles everything from scratch:
+    - Installs spicetify automatically if not present
     - Kills Spotify if running
-    - Restores Spotify to vanilla state (undoes previous apply)
-    - Downloads and installs Clear theme files (user.css, color.ini, theme.js)
-    - Builds/downloads and installs the audio visualizer daemon (vis-capture)
-    - Configures spicetify to use the Clear theme
-    - Applies the theme
+    - Detects and fully removes any previous Clear installation
+    - Downloads fresh theme files (user.css, color.ini, theme.js)
+    - Builds/downloads the audio visualizer daemon (vis-capture)
+    - Configures and applies the theme
     - Launches Spotify
 .NOTES
     Run in PowerShell (admin not required unless Spotify is installed system-wide).
-    Requires spicetify to already be installed: https://spicetify.app
+    Requires Spotify Desktop to already be installed and logged in.
 #>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$repo = "wktkow/clear-spotify-theme"
+$repo = "wktkow/clear-spotify-client"
 $branch = "main"
 $baseUrl = "https://raw.githubusercontent.com/$repo/$branch"
 $themeFiles = @("user.css", "color.ini", "theme.js")
@@ -28,17 +28,39 @@ function Write-Step($msg) { Write-Host "`n>> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   $msg" -ForegroundColor Yellow }
 
-# ── 1. Check spicetify is installed ──────────────────────────────────────────
+# ── 1. Ensure spicetify is installed ─────────────────────────────────────────
 Write-Step "Checking spicetify installation"
 $spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
 if (-not $spicetifyCmd) {
-    Write-Host "`n   spicetify is not installed or not in PATH." -ForegroundColor Red
-    Write-Host "   Install it first: https://spicetify.app" -ForegroundColor Red
-    Write-Host "   Run this in PowerShell:" -ForegroundColor Yellow
-    Write-Host '   iwr -useb https://raw.githubusercontent.com/spicetify/cli/main/install.ps1 | iex' -ForegroundColor White
-    exit 1
+    Write-Warn "spicetify not found — installing automatically..."
+    try {
+        Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/spicetify/cli/main/install.ps1" | Invoke-Expression
+    } catch {
+        Write-Host "`n   Failed to install spicetify: $_" -ForegroundColor Red
+        Write-Host "   Install it manually: https://spicetify.app" -ForegroundColor Red
+        exit 1
+    }
+
+    # Refresh PATH so we can find the new binary
+    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+    $spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
+    if (-not $spicetifyCmd) {
+        # Try the default install location directly
+        $defaultSpicetify = Join-Path $env:LOCALAPPDATA "spicetify\spicetify.exe"
+        if (Test-Path $defaultSpicetify) {
+            $env:PATH = (Split-Path $defaultSpicetify) + ";" + $env:PATH
+            $spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
+        }
+    }
+    if (-not $spicetifyCmd) {
+        Write-Host "`n   spicetify installed but not found in PATH." -ForegroundColor Red
+        Write-Host "   Close and reopen PowerShell, then run this script again." -ForegroundColor Yellow
+        exit 1
+    }
+    Write-Ok "spicetify installed successfully"
+} else {
+    Write-Ok "spicetify found at $($spicetifyCmd.Source)"
 }
-Write-Ok "spicetify found at $($spicetifyCmd.Source)"
 
 # ── 2. Kill Spotify ─────────────────────────────────────────────────────────
 Write-Step "Stopping Spotify"
@@ -75,9 +97,18 @@ if (-not $spicetifyDir) {
 }
 
 if (-not $spicetifyDir -or -not (Test-Path $spicetifyDir)) {
-    Write-Host "`n   Could not find spicetify config directory." -ForegroundColor Red
-    Write-Host "   Make sure spicetify is installed and has been run at least once." -ForegroundColor Red
-    exit 1
+    # spicetify was just installed — run it once to generate config
+    Write-Warn "Config directory not found — initializing spicetify..."
+    try { & spicetify 2>$null } catch {}
+    try {
+        $pathOutput = & spicetify path -c 2>$null
+        if ($pathOutput) { $spicetifyDir = Split-Path $pathOutput }
+    } catch {}
+    if (-not $spicetifyDir -or -not (Test-Path $spicetifyDir)) {
+        Write-Host "`n   Could not find spicetify config directory." -ForegroundColor Red
+        Write-Host "   Make sure Spotify Desktop is installed and has been opened at least once." -ForegroundColor Red
+        exit 1
+    }
 }
 Write-Ok "Config directory: $spicetifyDir"
 
@@ -319,6 +350,6 @@ if ($spotifyExe) {
     }
 }
 
-Write-Host "`n   Clear theme installed successfully!" -ForegroundColor Green
+Write-Host "`n   Clear installed successfully!" -ForegroundColor Green
 Write-Host "   Enjoy your clean Spotify experience." -ForegroundColor White
 Write-Host ""

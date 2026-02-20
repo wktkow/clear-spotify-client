@@ -1,4 +1,4 @@
-### Clear is based on [Spicetify](https://spicetify.app/) it embeds its installer and overrides its configs.
+### Clear is based on [Spicetify](https://spicetify.app/), it embeds its installer and overrides its configs.
 
 ### ShadeX
 
