@@ -818,8 +818,7 @@
     let animId = null;
     let overlay = null;
     let canvas = null;
-    let gl = null;
-    let glProgram = null;
+    let ctx = null;
     let msgEl = null;
 
     // WebSocket state
@@ -829,99 +828,6 @@
     let reconnectTimer = null;
     let lastMsgTime = 0;
     let lastDiagTime = 0;
-
-    // --- WebGL shaders ---
-    // Each bar is a separate quad (2 triangles). Vertex positions and
-    // per-bar brightness are computed in JS and uploaded every frame.
-    const VERT_SRC = `
-      attribute vec2 a_pos;
-      attribute float a_alpha;
-      varying float v_alpha;
-      void main() {
-        v_alpha = a_alpha;
-        gl_Position = vec4(a_pos, 0.0, 1.0);
-      }
-    `;
-
-    const FRAG_SRC = `
-      precision mediump float;
-      varying float v_alpha;
-      void main() {
-        gl_FragColor = vec4(v_alpha, v_alpha, v_alpha, 1.0);
-      }
-    `;
-
-    // 70 bars × 6 verts × 3 floats (x, y, alpha) = 1260 floats
-    const VERTS_PER_BAR = 6;
-    const FLOATS_PER_VERT = 3;
-    const vertData = new Float32Array(
-      BAR_COUNT * VERTS_PER_BAR * FLOATS_PER_VERT,
-    );
-    let glVertBuf = null;
-
-    function initWebGL() {
-      if (!canvas) return false;
-      gl = canvas.getContext("webgl", {
-        alpha: true,
-        premultipliedAlpha: false,
-        antialias: false,
-        preserveDrawingBuffer: true,
-      });
-      if (!gl) {
-        console.warn("[VIS] WebGL unavailable");
-        return false;
-      }
-
-      // Compile shaders
-      const vs = gl.createShader(gl.VERTEX_SHADER);
-      gl.shaderSource(vs, VERT_SRC);
-      gl.compileShader(vs);
-      if (!gl.getShaderParameter(vs, gl.COMPILE_STATUS)) {
-        console.error("[VIS] VS:", gl.getShaderInfoLog(vs));
-        return false;
-      }
-
-      const fs = gl.createShader(gl.FRAGMENT_SHADER);
-      gl.shaderSource(fs, FRAG_SRC);
-      gl.compileShader(fs);
-      if (!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) {
-        console.error("[VIS] FS:", gl.getShaderInfoLog(fs));
-        return false;
-      }
-
-      glProgram = gl.createProgram();
-      gl.attachShader(glProgram, vs);
-      gl.attachShader(glProgram, fs);
-      gl.linkProgram(glProgram);
-      if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
-        console.error("[VIS] Link:", gl.getProgramInfoLog(glProgram));
-        return false;
-      }
-
-      gl.useProgram(glProgram);
-
-      // Dynamic vertex buffer for bar geometry (updated every frame)
-      glVertBuf = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, glVertBuf);
-      gl.bufferData(gl.ARRAY_BUFFER, vertData.byteLength, gl.DYNAMIC_DRAW);
-
-      // Vertex layout: [x, y, alpha] per vertex, stride = 12 bytes
-      const stride = FLOATS_PER_VERT * 4;
-      const aPos = gl.getAttribLocation(glProgram, "a_pos");
-      gl.enableVertexAttribArray(aPos);
-      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, stride, 0);
-
-      const aAlpha = gl.getAttribLocation(glProgram, "a_alpha");
-      gl.enableVertexAttribArray(aAlpha);
-      gl.vertexAttribPointer(aAlpha, 1, gl.FLOAT, false, stride, 8);
-
-      // Blending: standard straight alpha
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-      console.log("[VIS] WebGL initialized");
-      return true;
-    }
 
     // --- WebSocket connection to native audio capture ---
     function connectWs() {
@@ -1094,10 +1000,11 @@
         mainView.style.position = "relative";
       }
       mainView.appendChild(overlay);
-      if (!initWebGL()) {
-        // Fallback: try 2d context if WebGL fails
-        gl = null;
-        console.warn("[VIS] WebGL init failed");
+      ctx = canvas.getContext("2d");
+      if (ctx) {
+        console.log("[VIS] Canvas2D initialized");
+      } else {
+        console.warn("[VIS] Canvas2D init failed");
       }
     }
 
@@ -1109,15 +1016,14 @@
       if (canvas.width !== tw || canvas.height !== th) {
         canvas.width = tw;
         canvas.height = th;
-        if (gl) gl.viewport(0, 0, tw, th);
       }
     }
 
-    // --- Render loop (WebGL per-bar geometry) ---
+    // --- Render loop (Canvas2D) ---
     function render() {
       if (!active) return;
       animId = requestAnimationFrame(render);
-      if (!gl) return;
+      if (!ctx) return;
 
       // Zero bars if daemon stopped mid-stream (no data for 1 second).
       if (lastMsgTime > 0 && performance.now() - lastMsgTime > 1000) {
@@ -1142,47 +1048,34 @@
       const H = canvas.height;
       if (W === 0 || H === 0) return;
 
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      ctx.clearRect(0, 0, W, H);
 
-      // Bar layout in pixels, mapped to clip space (-1..1)
+      // Bar layout
       const padX = 16,
         padY = 16,
         gap = 2;
       const usable = W - padX * 2;
       const barW = (usable - gap * (BAR_COUNT - 1)) / BAR_COUNT;
       const maxH = H - padY * 2;
+      const radius = Math.min(barW * 0.4, 3);
 
-      let vi = 0;
       for (let i = 0; i < BAR_COUNT; i++) {
         const v = wsData[i];
         const h = Math.max(2, v * maxH);
         const a = 0.3 + v * 0.7;
-        const l = ((padX + i * (barW + gap)) / W) * 2 - 1;
-        const r = ((padX + i * (barW + gap) + barW) / W) * 2 - 1;
-        const b = (padY / H) * 2 - 1;
-        const t = ((padY + h) / H) * 2 - 1;
-        // Triangle 1
-        vertData[vi++] = l; vertData[vi++] = b; vertData[vi++] = a;
-        vertData[vi++] = r; vertData[vi++] = b; vertData[vi++] = a;
-        vertData[vi++] = l; vertData[vi++] = t; vertData[vi++] = a;
-        // Triangle 2
-        vertData[vi++] = l; vertData[vi++] = t; vertData[vi++] = a;
-        vertData[vi++] = r; vertData[vi++] = b; vertData[vi++] = a;
-        vertData[vi++] = r; vertData[vi++] = t; vertData[vi++] = a;
-      }
+        const x = padX + i * (barW + gap);
+        const y = H - padY - h;
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, glVertBuf);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertData);
-      gl.drawArrays(gl.TRIANGLES, 0, BAR_COUNT * VERTS_PER_BAR);
-
-      // First-frame diagnostic: check GL errors and pixel readback
-      if (!render._logged) {
-        render._logged = true;
-        const err = gl.getError();
-        const px = new Uint8Array(4);
-        gl.readPixels(Math.floor(W / 2), Math.floor(padY + 10), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-        console.log(`[VIS-RENDER] canvas=${W}x${H} display=${canvas.style.display} glErr=${err} centerPx=[${px}] vi=${vi} bar0=[${vertData[0].toFixed(3)},${vertData[1].toFixed(3)},${vertData[2].toFixed(3)}]`);
+        ctx.fillStyle = `rgba(255,255,255,${a})`;
+        // Rounded top corners
+        ctx.beginPath();
+        ctx.moveTo(x, H - padY);
+        ctx.lineTo(x, y + radius);
+        ctx.arcTo(x, y, x + radius, y, radius);
+        ctx.arcTo(x + barW, y, x + barW, y + radius, radius);
+        ctx.lineTo(x + barW, H - padY);
+        ctx.closePath();
+        ctx.fill();
       }
     }
 
