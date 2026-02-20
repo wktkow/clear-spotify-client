@@ -44,7 +44,7 @@ iwr -useb https://raw.githubusercontent.com/spicetify/cli/main/install.ps1 | iex
 iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-theme/main/powershell/install.ps1 | iex
 ```
 
-(Installs [Clear Spotify](https://github.com/wktkow/clear-spotify-theme))
+(Installs [Clear Spotify](https://github.com/wktkow/clear-spotify-theme) — kills Spotify, clears any previous theme/snippets, downloads theme files, applies, and launches Spotify)
 
 4. Enjoy!
 
