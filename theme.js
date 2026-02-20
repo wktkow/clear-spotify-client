@@ -945,7 +945,9 @@
       gl.useProgram(glProgram);
 
       // Full-screen quad (two triangles)
-      const verts = new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]);
+      const verts = new Float32Array([
+        -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1,
+      ]);
       const buf = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, buf);
       gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
@@ -954,7 +956,9 @@
       gl.enableVertexAttribArray(aPos);
       gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
 
-      // 1D texture for bar data (128 wide, LUMINANCE, NEAREST)
+      // 1D texture for bar data (BAR_COUNT wide, LUMINANCE, NEAREST)
+      // UNPACK_ALIGNMENT=1 because BAR_COUNT (70) is not a multiple of 4
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       glBarTex = gl.createTexture();
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, glBarTex);
@@ -962,8 +966,17 @@
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, BAR_COUNT, 1, 0,
-                     gl.LUMINANCE, gl.UNSIGNED_BYTE, null);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.LUMINANCE,
+        BAR_COUNT,
+        1,
+        0,
+        gl.LUMINANCE,
+        gl.UNSIGNED_BYTE,
+        null,
+      );
 
       // Uniform locations
       const barTexLoc = gl.getUniformLocation(glProgram, "u_barTex");
@@ -1011,6 +1024,7 @@
         console.log("[VIS] WebSocket connected to audio bridge");
       };
 
+      let frameCount = 0;
       ws.onmessage = async (e) => {
         try {
           let buf;
@@ -1025,6 +1039,14 @@
           const len = Math.min(BAR_COUNT, data.length);
           for (let i = 0; i < len; i++) wsData[i] = data[i];
           lastMsgTime = performance.now();
+          frameCount++;
+          if (frameCount <= 3) {
+            const sample = [data[0], data[10], data[30], data[50], data[69]];
+            console.log(
+              `[VIS] frame#${frameCount}: ${data.length} floats, sample:`,
+              sample.map((v) => v.toFixed(4)).join(", "),
+            );
+          }
         } catch (err) {
           console.warn("[VIS] onmessage error:", err);
         }
@@ -1178,8 +1200,17 @@
       // Diagnostic: log bar values every 2 seconds to pinpoint lockup layer
       const now = performance.now();
       if (now - lastDiagTime > 2000 && lastMsgTime > 0) {
-        const sample = [wsData[0], wsData[10], wsData[30], wsData[50], wsData[69]];
-        console.log("[VIS-DIAG] bars[0,10,30,50,69]:", sample.map(v => v.toFixed(3)).join(", "));
+        const sample = [
+          wsData[0],
+          wsData[10],
+          wsData[30],
+          wsData[50],
+          wsData[69],
+        ];
+        console.log(
+          "[VIS-DIAG] bars[0,10,30,50,69]:",
+          sample.map((v) => v.toFixed(3)).join(", "),
+        );
         lastDiagTime = now;
       }
 
@@ -1196,8 +1227,17 @@
       }
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, glBarTex);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BAR_COUNT, 1,
-                        gl.LUMINANCE, gl.UNSIGNED_BYTE, texBuf.subarray(0, BAR_COUNT));
+      gl.texSubImage2D(
+        gl.TEXTURE_2D,
+        0,
+        0,
+        0,
+        BAR_COUNT,
+        1,
+        gl.LUMINANCE,
+        gl.UNSIGNED_BYTE,
+        texBuf.subarray(0, BAR_COUNT),
+      );
 
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }

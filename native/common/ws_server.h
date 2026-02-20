@@ -255,16 +255,24 @@ private:
 
     // Non-blocking drain of any data the browser sent us (close/pong frames).
     // We never parse it — just keep the TCP receive buffer from filling up.
+    // Also detects client disconnect (recv returns 0 or error) so we can
+    // accept a new connection immediately.
     void drainClient() {
         if (clientSock == SOCK_INVALID) return;
         char junk[512];
 #ifdef _WIN32
         u_long avail = 0;
         ioctlsocket(clientSock, FIONREAD, &avail);
-        if (avail > 0) recv(clientSock, junk, sizeof(junk), 0);
+        if (avail > 0) {
+            int n = recv(clientSock, junk, sizeof(junk), 0);
+            if (n <= 0) { dropClient(); return; }
+        }
 #else
         // MSG_DONTWAIT = non-blocking one-shot read
-        recv(clientSock, junk, sizeof(junk), MSG_DONTWAIT);
+        int n = recv(clientSock, junk, sizeof(junk), MSG_DONTWAIT);
+        // n == 0 → orderly close; n == -1 with EAGAIN/EWOULDBLOCK → no data (OK)
+        if (n == 0) { dropClient(); return; }
+        if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) { dropClient(); return; }
 #endif
     }
 
