@@ -55,6 +55,103 @@ def generate_colors_css(schemes: dict[str, dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def generate_encore_overrides(colors: dict[str, str]) -> str:
+    """Generate Encore design system variable overrides.
+
+    The Spotify web player uses Encore theme tokens (--background-base,
+    --text-base, etc.) instead of Spicetify's --spice-* variables.
+    Overriding these makes Spotify's own CSS use our colour scheme.
+    """
+    c = colors
+    rgb_text = hex_to_rgb(c.get("text", "fafafa"))
+    return "\n".join([
+        "",
+        "/* ===== Encore design system overrides (web player) ===== */",
+        ".encore-dark-theme,",
+        ".encore-dark-theme .encore-base-set,",
+        ".encore-dark-theme .encore-inverted-dark-set {",
+        f"  --background-base: #{c.get('main', '0a0a0a')} !important;",
+        f"  --background-highlight: #{c.get('highlight', '171717')} !important;",
+        f"  --background-press: #{c.get('main', '0a0a0a')} !important;",
+        f"  --background-elevated-base: #{c.get('main-elevated', '171717')} !important;",
+        f"  --background-elevated-highlight: #{c.get('highlight-elevated', '171717')} !important;",
+        f"  --background-elevated-press: #{c.get('highlight', '171717')} !important;",
+        f"  --background-tinted-base: rgba({rgb_text}, 0.04) !important;",
+        f"  --background-tinted-highlight: rgba({rgb_text}, 0.07) !important;",
+        f"  --background-tinted-press: rgba({rgb_text}, 0.03) !important;",
+        f"  --text-base: #{c.get('text', 'fafafa')} !important;",
+        f"  --text-subdued: #{c.get('subtext', '737373')} !important;",
+        f"  --text-bright-accent: #{c.get('accent', 'fafafa')} !important;",
+        f"  --text-positive: #{c.get('accent', 'fafafa')} !important;",
+        "  --text-negative: #f15e6c !important;",
+        "  --text-warning: #ffa42b !important;",
+        f"  --essential-base: #{c.get('text', 'fafafa')} !important;",
+        f"  --essential-subdued: #{c.get('subtext', '737373')} !important;",
+        f"  --essential-bright-accent: #{c.get('accent', 'fafafa')} !important;",
+        "  --essential-negative: #e91429 !important;",
+        f"  --essential-positive: #{c.get('accent', 'fafafa')} !important;",
+        f"  --decorative-base: #{c.get('accent', 'fafafa')} !important;",
+        f"  --decorative-subdued: #{c.get('subtext', '737373')} !important;",
+        "}",
+    ])
+
+
+def generate_web_bridge_css(colors: dict[str, str]) -> str:
+    """Generate CSS rules targeting web player elements by stable selectors.
+
+    The web player uses different element structure and tag names than
+    Spicetify on desktop.  These rules use IDs, data-testid attributes,
+    and aria labels that are stable across Spotify deploys.
+    """
+    c = colors
+    border = f"1px solid #{c.get('border', '262626')}"
+    return "\n".join([
+        "",
+        "/* ===== Web player bridge CSS (stable selectors) ===== */",
+        "",
+        "/* Main content panel */",
+        "#main-view {",
+        f"  border: {border} !important;",
+        "  border-radius: 0.5rem !important;",
+        "}",
+        "",
+        "/* Library sidebar */",
+        "#Desktop_LeftSidebar_Id {",
+        f"  border: {border} !important;",
+        "  border-radius: 0.5rem !important;",
+        "}",
+        "",
+        "/* Now playing bar (web uses <aside>, desktop uses <footer>) */",
+        '[data-testid="now-playing-bar"] {',
+        f"  border: {border} !important;",
+        "  border-radius: 0.5rem !important;",
+        "}",
+        "",
+        "/* Now playing bar inner wrapper */",
+        '[data-testid="now-playing-bar"] > div {',
+        f"  border: {border} !important;",
+        "  border-radius: 0.5rem !important;",
+        "}",
+        "",
+        "/* Player controls play/pause button – match desktop style */",
+        '[data-testid="player-controls"] button[data-testid="control-button-playpause"] {',
+        "  background: none !important;",
+        f"  color: #{c.get('text', 'fafafa')} !important;",
+        "}",
+        "",
+        "/* Top layout container background */",
+        "[data-right-sidebar-hidden] {",
+        f"  background-color: #{c.get('main', '0a0a0a')} !important;",
+        "}",
+        "",
+        "/* Hide box-shadows globally (matches desktop * rule) */",
+        "[data-testid=\"root\"] * {",
+        "  box-shadow: none !important;",
+        "}",
+        "",
+    ])
+
+
 def create_manifest() -> dict:
     """Return a Chrome MV3 extension manifest."""
     return {
@@ -145,26 +242,39 @@ def build() -> None:
         user_css = f.read()
     print("  ✓ user.css")
 
-    # 3. Combine colors + user CSS into one theme.css file.
+    # 3. Generate web-player-specific CSS sections
+    scheme_name = "dark" if "dark" in schemes else list(schemes.keys())[0]
+    scheme_colors = schemes[scheme_name]
+    encore_css = generate_encore_overrides(scheme_colors)
+    bridge_css = generate_web_bridge_css(scheme_colors)
+    print("  ✓ encore overrides + web bridge CSS")
+
+    # 4. Combine everything into one theme.css file.
     #    Chrome silently drops the second file when manifest has two CSS
     #    entries, so we merge them.  add_important() ensures our rules
     #    beat Spotify's regardless of load order.
     marker = "/* clear-theme-marker */\nhtml { --clear-ext-loaded: 1 !important; }\n\n"
-    combined = marker + add_important(colors_css) + "\n\n" + add_important(user_css)
+    combined = (
+        marker
+        + add_important(colors_css) + "\n\n"
+        + add_important(user_css) + "\n\n"
+        + encore_css + "\n\n"
+        + bridge_css
+    )
     with open(os.path.join(BUILD_DIR, "theme.css"), "w") as f:
         f.write(combined)
     important_count = combined.count('!important')
     print(f"  ✓ theme.css (combined, {important_count} declarations, {len(combined)} bytes)")
 
-    # 4. Copy theme.js
+    # 5. Copy theme.js
     shutil.copy(os.path.join(REPO_ROOT, "theme.js"), BUILD_DIR)
     print("  ✓ theme.js")
 
-    # 5. Copy guard.js (extension-only login guard)
+    # 6. Copy guard.js (extension-only login guard)
     shutil.copy(os.path.join(SCRIPT_DIR, "guard.js"), BUILD_DIR)
     print("  ✓ guard.js")
 
-    # 6. Write manifest.json
+    # 7. Write manifest.json
     manifest = create_manifest()
     with open(os.path.join(BUILD_DIR, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
@@ -172,7 +282,7 @@ def build() -> None:
 
     print(f"\n  → Unpacked: {BUILD_DIR}")
 
-    # 7. Pack into .zip for Chrome Web Store / easy sharing
+    # 8. Pack into .zip for Chrome Web Store / easy sharing
     zip_name = f"clear-spotify-theme-v{manifest['version']}.zip"
     zip_path = os.path.join(DIST_DIR, zip_name)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

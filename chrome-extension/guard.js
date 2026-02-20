@@ -14,120 +14,88 @@
 
   const DISABLED_KEY = "clear-extension-disabled";
 
-  /* ── Diagnostics v6 – layout discovery ───────────────────────────── */
+  /* ── Class bridge ─────────────────────────────────────────────────
+   * The web player doesn't have Spicetify's Root__* or main-* class
+   * names.  We inject them onto the matching web player elements so
+   * our existing CSS selectors work without modification.
+   * Uses stable identifiers: IDs, data-testid, aria-labels.
+   * ─────────────────────────────────────────────────────────────── */
 
-  console.log("[Clear Theme] guard.js v6-layout loaded");
+  console.log("[Clear Theme] guard.js v7-bridge loaded");
 
-  function dumpLayout() {
-    console.log("[Clear Theme] === LAYOUT DUMP ===");
+  /**
+   * Mapping of CSS selector → Spicetify class(es) to add.
+   * Selectors use only stable web player identifiers.
+   */
+  const CLASS_MAP = [
+    // Layout panels
+    { sel: "#main-view", cls: ["Root__main-view"] },
+    { sel: "#Desktop_LeftSidebar_Id", cls: ["Root__nav-bar"] },
+    { sel: "[data-right-sidebar-hidden]", cls: ["Root__top-container"] },
 
-    // 1. Check our CSS is active
-    const marker = getComputedStyle(document.documentElement)
-      .getPropertyValue("--clear-ext-loaded")
-      .trim();
-    console.log(`[Clear Theme] marker=${marker} sheets=${document.styleSheets.length}`);
+    // Now-playing bar (web uses <aside>, desktop uses <footer>)
+    {
+      sel: '[data-testid="now-playing-bar"]',
+      cls: ["Root__now-playing-bar", "main-nowPlayingBar-container"],
+    },
 
-    // 2. Root element and its children (1 level)
-    const root = document.querySelector('[data-testid="root"]');
-    if (root) {
-      console.log(
-        `[Clear Theme] ROOT: <${root.tagName.toLowerCase()}> class="${root.className}"`,
-      );
-      for (const child of root.children) {
-        const id = child.id ? `#${child.id}` : "";
-        const tid = child.dataset.testid
-          ? `[testid=${child.dataset.testid}]`
-          : "";
-        const cls = child.className
-          ? ` class="${String(child.className).substring(0, 100)}"`
-          : "";
-        console.log(
-          `[Clear Theme]   child: <${child.tagName.toLowerCase()}${id}${tid}${cls}> children=${child.children.length}`,
-        );
-        // One more level for layout children
-        for (const gc of child.children) {
-          const gcId = gc.id ? `#${gc.id}` : "";
-          const gcTid = gc.dataset.testid
-            ? `[testid=${gc.dataset.testid}]`
-            : "";
-          const gcCls = gc.className
-            ? ` class="${String(gc.className).substring(0, 100)}"`
-            : "";
-          const gcTag = gc.tagName.toLowerCase();
-          console.log(
-            `[Clear Theme]     gc: <${gcTag}${gcId}${gcTid}${gcCls}> children=${gc.children.length}`,
-          );
+    // Now-playing bar inner div (first child of the aside)
+    {
+      sel: '[data-testid="now-playing-bar"] > div',
+      cls: ["main-nowPlayingBar-nowPlayingBar"],
+    },
+
+    // Global navigation (root already has "Root global-nav")
+    { sel: '[data-testid="root"]', cls: ["Root__top-container"] },
+  ];
+
+  function injectClasses() {
+    let injected = 0;
+    for (const { sel, cls } of CLASS_MAP) {
+      const els = document.querySelectorAll(sel);
+      for (const el of els) {
+        for (const c of cls) {
+          if (!el.classList.contains(c)) {
+            el.classList.add(c);
+            injected++;
+          }
         }
       }
-    } else {
-      console.log("[Clear Theme] ROOT: NOT FOUND");
     }
-
-    // 3. Search for known data-testid layout elements
-    const testIds = [
-      "root",
-      "main-view",
-      "main-view-container",
-      "left-sidebar",
-      "right-sidebar",
-      "now-playing-bar",
-      "now-playing-widget",
-      "global-nav-bar",
-      "top-bar",
-      "player-controls",
-      "footer",
-      "buddy-feed",
-      "library",
-      "your-library",
-      "nav-bar",
-      "content-spacing",
-    ];
-    console.log("[Clear Theme] === DATA-TESTID SEARCH ===");
-    for (const tid of testIds) {
-      const el = document.querySelector(`[data-testid="${tid}"]`);
-      if (el) {
-        console.log(
-          `[Clear Theme]   ${tid}: <${el.tagName.toLowerCase()}> class="${String(el.className).substring(0, 120)}"`,
-        );
-      }
-    }
-
-    // 4. Search for Root__* classes (Spicetify injects these on desktop)
-    const rootEls = document.querySelectorAll('[class*="Root__"]');
-    console.log(
-      `[Clear Theme] === Root__* elements: ${rootEls.length} ===`,
-    );
-    rootEls.forEach((el) => {
-      console.log(
-        `[Clear Theme]   <${el.tagName.toLowerCase()}> class="${String(el.className).substring(0, 120)}"`,
-      );
-    });
-
-    // 5. Search for main-nowPlayingBar (used heavily in our CSS)
-    const npBar = document.querySelector(
-      '[class*="main-nowPlayingBar"], footer',
-    );
-    if (npBar) {
-      console.log(
-        `[Clear Theme]   nowPlayingBar: <${npBar.tagName.toLowerCase()}> class="${String(npBar.className).substring(0, 120)}"`,
-      );
-    }
-
-    // 6. Find elements with class containing "main-" (Spotify's BEM naming)
-    const mainEls = new Set();
-    document.querySelectorAll('[class*="main-"]').forEach((el) => {
-      String(el.className)
-        .split(/\s+/)
-        .forEach((c) => {
-          if (c.startsWith("main-")) mainEls.add(c);
-        });
-    });
-    console.log(
-      `[Clear Theme] === Unique main-* classes (${mainEls.size}): ${[...mainEls].sort().join(", ")} ===`,
-    );
+    return injected;
   }
 
-  setTimeout(dumpLayout, 5000);
+  // Run immediately + on DOM ready + with observer for SPA navigation
+  function startClassBridge() {
+    injectClasses();
+
+    // Re-inject after Spotify's React hydration
+    if (document.body) {
+      new MutationObserver(() => injectClasses()).observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    } else {
+      document.addEventListener(
+        "DOMContentLoaded",
+        () => {
+          injectClasses();
+          new MutationObserver(() => injectClasses()).observe(document.body, {
+            childList: true,
+            subtree: true,
+          });
+        },
+        { once: true },
+      );
+    }
+
+    // Safety net: re-inject a few times during load
+    setTimeout(injectClasses, 1000);
+    setTimeout(injectClasses, 3000);
+    setTimeout(injectClasses, 6000);
+  }
+
+  startClassBridge();
 
   /* ── CSS toggle ───────────────────────────────────────────────────── */
 
