@@ -178,6 +178,10 @@
       "clear-pause-dim",
       settings.pauseDim !== false,
     );
+    document.body.classList.toggle(
+      "clear-hide-marketplace",
+      settings.hideMarketplace !== false,
+    );
     // Font choice: "default" | "inter" | "geist"
     const font = settings.fontChoice || "default";
     document.body.classList.toggle("clear-font-inter", font === "inter");
@@ -268,6 +272,64 @@
   updatePausedState();
   onPlayPauseChange(updatePausedState);
 
+  function showMarketplaceWarning(onConfirm) {
+    const overlay = document.createElement("div");
+    overlay.className = "clear-warning-overlay clear-warning-overlay--open";
+
+    const modal = document.createElement("div");
+    modal.className = "clear-warning-modal";
+
+    const icon = document.createElement("div");
+    icon.className = "clear-warning-icon";
+    icon.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>`;
+    modal.appendChild(icon);
+
+    const title = document.createElement("div");
+    title.className = "clear-warning-title";
+    title.textContent = "Warning";
+    modal.appendChild(title);
+
+    const msg = document.createElement("div");
+    msg.className = "clear-warning-message";
+    msg.textContent =
+      "Most items from the Marketplace are not compatible with Clear and may cause errors that force a full reinstall. Are you sure you want to show the Marketplace?";
+    modal.appendChild(msg);
+
+    const actions = document.createElement("div");
+    actions.className = "clear-warning-actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "clear-warning-btn clear-warning-btn--cancel";
+    cancelBtn.textContent = "Keep Hidden";
+    cancelBtn.addEventListener("click", () => {
+      overlay.classList.remove("clear-warning-overlay--open");
+      setTimeout(() => overlay.remove(), 150);
+    });
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.className = "clear-warning-btn clear-warning-btn--confirm";
+    confirmBtn.textContent = "Show Marketplace";
+    confirmBtn.addEventListener("click", () => {
+      overlay.classList.remove("clear-warning-overlay--open");
+      setTimeout(() => overlay.remove(), 150);
+      onConfirm();
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    modal.appendChild(actions);
+
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) {
+        overlay.classList.remove("clear-warning-overlay--open");
+        setTimeout(() => overlay.remove(), 150);
+      }
+    });
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
   function openSettingsModal() {
     // Don't double-create
     if (document.querySelector(".clear-settings-overlay")) {
@@ -352,6 +414,49 @@
       "Lyrics Fade",
       "Fade transition when opening or closing lyrics",
     );
+    // Hide Marketplace toggle (desktop only) with warning modal
+    {
+      const isWeb =
+        document.documentElement.classList.contains(
+          "spotify__container--is-web",
+        ) ||
+        document.body?.classList.contains("spotify__container--is-web") ||
+        document.querySelector(".spotify__container--is-web");
+      if (!isWeb) {
+        const key = "hideMarketplace";
+        const label = "Hide Marketplace";
+        const desc = "Hide the Marketplace link from the dropdown menu";
+        const isOn = settings[key] !== false;
+        const row = document.createElement("div");
+        row.className = "clear-settings-row";
+        row.innerHTML = `<div><div class="clear-settings-row-label">${label}</div><div class="clear-settings-row-desc">${desc}</div></div>`;
+        const toggle = document.createElement("button");
+        toggle.className =
+          "clear-settings-toggle" + (isOn ? " clear-settings-toggle--on" : "");
+        toggle.innerHTML = `<span class="clear-settings-toggle-knob"></span>`;
+        toggle.addEventListener("click", () => {
+          const s = loadSettings();
+          const currentlyOn = s[key] !== false;
+          if (currentlyOn) {
+            // Turning OFF — show warning modal
+            showMarketplaceWarning(() => {
+              s[key] = false;
+              saveSettings(s);
+              toggle.classList.remove("clear-settings-toggle--on");
+              applySettings();
+            });
+          } else {
+            s[key] = true;
+            saveSettings(s);
+            toggle.classList.add("clear-settings-toggle--on");
+            applySettings();
+          }
+        });
+        row.appendChild(toggle);
+        modal.appendChild(row);
+      }
+    }
+
     // Font dropdown
     {
       const row = document.createElement("div");
@@ -456,6 +561,7 @@
         ? [
             {
               label: "Marketplace",
+              extraClass: "clear-kebab-item-marketplace",
               icon: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75z"/></svg>`,
               action: () => navigateSPA("/marketplace"),
             },
@@ -493,7 +599,8 @@
 
     items.forEach((item) => {
       const menuItem = document.createElement("button");
-      menuItem.className = "clear-kebab-item";
+      menuItem.className =
+        "clear-kebab-item" + (item.extraClass ? " " + item.extraClass : "");
       menuItem.innerHTML = `<span class="clear-kebab-item-icon">${item.icon}</span><span class="clear-kebab-item-label">${item.label}</span>`;
       menuItem.addEventListener("click", (e) => {
         e.stopPropagation();

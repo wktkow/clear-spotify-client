@@ -1974,6 +1974,104 @@ button.main-userWidget-box {
   display: none !important;
 }
 
+/* --- Hide Marketplace from kebab dropdown (toggled via Clear Settings) --- */
+body.clear-hide-marketplace .clear-kebab-item-marketplace {
+  display: none !important;
+}
+
+/* --- Clear Warning Modal --- */
+.clear-warning-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s;
+}
+
+.clear-warning-overlay--open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.clear-warning-modal {
+  width: 20rem;
+  background-color: var(--spice-main);
+  border: var(--default-border);
+  border-radius: var(--border-radius-md);
+  padding: 1.5rem;
+  text-align: center;
+  transform: translateY(8px) scale(0.97);
+  transition: transform 0.15s ease;
+}
+
+.clear-warning-overlay--open .clear-warning-modal {
+  transform: translateY(0) scale(1);
+}
+
+.clear-warning-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+  color: #e5a00d;
+}
+
+.clear-warning-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--spice-text);
+  margin-bottom: 0.5rem;
+}
+
+.clear-warning-message {
+  font-size: 0.8125rem;
+  color: var(--spice-subtext);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.clear-warning-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.clear-warning-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.clear-warning-btn--cancel {
+  background-color: var(--spice-button-hover);
+  color: var(--spice-text);
+}
+
+.clear-warning-btn--cancel:hover {
+  background-color: rgba(var(--spice-rgb-text), 0.15);
+}
+
+.clear-warning-btn--confirm {
+  background-color: #e5a00d;
+  color: #000;
+}
+
+.clear-warning-btn--confirm:hover {
+  background-color: #ccaa00;
+}
+
 /* Shrink global nav bar to fit its content */
 .Root__globalNav {
   width: fit-content !important;
