@@ -159,7 +159,92 @@ try {
     }
 }
 
-# ── 8. Launch Spotify ────────────────────────────────────────────────────────
+# ── 8. Build and install audio visualizer daemon ─────────────────────────────
+Write-Step "Setting up audio visualizer daemon"
+
+$nativeDir = Join-Path $clearDir "native"
+$nativeCommon = Join-Path $nativeDir "common"
+$nativeWin = Join-Path $nativeDir "windows"
+New-Item -ItemType Directory -Force -Path $nativeCommon | Out-Null
+New-Item -ItemType Directory -Force -Path $nativeWin | Out-Null
+
+$nativeFiles = @(
+    "native/common/protocol.h",
+    "native/common/fft.h",
+    "native/common/ws_server.h",
+    "native/windows/main.cpp",
+    "native/windows/build.bat"
+)
+
+$nativeOk = $true
+foreach ($nf in $nativeFiles) {
+    $url  = "$baseUrl/$nf"
+    $dest = Join-Path $clearDir $nf
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+    } catch {
+        Write-Warn "Failed to download $nf — skipping daemon setup"
+        $nativeOk = $false
+        break
+    }
+}
+
+if ($nativeOk) {
+    # Try to build with cl.exe if available
+    $clCmd = Get-Command cl -ErrorAction SilentlyContinue
+    $visBin = Join-Path $clearDir "vis-capture.exe"
+
+    if ($clCmd) {
+        Push-Location $nativeWin
+        try {
+            & cl /O2 /EHsc /std:c++17 /Fe:$visBin main.cpp ole32.lib ws2_32.lib 2>$null
+            if (Test-Path $visBin) {
+                Write-Ok "vis-capture.exe built successfully"
+            } else {
+                $nativeOk = $false
+            }
+        } catch {
+            $nativeOk = $false
+        }
+        Pop-Location
+    } else {
+        Write-Warn "cl.exe not found — trying to download pre-built binary"
+        # Try to download a pre-built release binary
+        $relUrl = "https://github.com/$repo/releases/latest/download/vis-capture.exe"
+        try {
+            Invoke-WebRequest -Uri $relUrl -OutFile $visBin -UseBasicParsing
+            if (Test-Path $visBin) {
+                Write-Ok "Downloaded pre-built vis-capture.exe"
+            } else {
+                $nativeOk = $false
+            }
+        } catch {
+            Write-Warn "Could not download pre-built binary"
+            Write-Warn "Install Visual Studio Build Tools and re-run, or build manually with build.bat"
+            $nativeOk = $false
+        }
+    }
+
+    if ($nativeOk -and (Test-Path $visBin)) {
+        # Create a startup shortcut so vis-capture runs on login
+        $startupDir = [System.IO.Path]::Combine($env:APPDATA, "Microsoft\Windows\Start Menu\Programs\Startup")
+        $shortcutPath = Join-Path $startupDir "ClearVis.lnk"
+
+        $shell = New-Object -ComObject WScript.Shell
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        $shortcut.TargetPath = $visBin
+        $shortcut.WindowStyle = 7  # minimized
+        $shortcut.Description = "Clear Spotify Visualizer Audio Bridge"
+        $shortcut.Save()
+        Write-Ok "Added vis-capture to Windows startup"
+
+        # Also start it right now
+        Start-Process -FilePath $visBin -WindowStyle Hidden
+        Write-Ok "vis-capture started"
+    }
+}
+
+# ── 9. Launch Spotify ────────────────────────────────────────────────────────
 Write-Step "Launching Spotify"
 $spotifyExe = $null
 

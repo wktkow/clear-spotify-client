@@ -9,6 +9,7 @@ REPO="wktkow/clear-spotify-theme"
 BRANCH="main"
 BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 THEME_FILES=("user.css" "color.ini" "theme.js")
+NATIVE_FILES=("native/common/protocol.h" "native/common/fft.h" "native/common/ws_server.h" "native/linux/main.cpp" "native/linux/Makefile" "native/linux/clear-vis.service")
 THEME_NAME="Clear"
 DEFAULT_DIR="$HOME/.config/spicetify/Themes/$THEME_NAME"
 
@@ -176,7 +177,60 @@ else
     fi
 fi
 
-# ── 8. Launch Spotify ────────────────────────────────────────────────────────
+# ── 8. Build and install audio visualizer daemon ─────────────────────────────
+cyan "Setting up audio visualizer daemon"
+
+# Check for g++ and libpulse
+if ! command -v g++ &>/dev/null; then
+    yellow "g++ not found — skipping visualizer daemon build"
+    yellow "Install with: sudo apt install g++  (or equivalent)"
+elif ! pkg-config --exists libpulse-simple 2>/dev/null; then
+    yellow "libpulse-dev not found — skipping visualizer daemon build"
+    yellow "Install with: sudo apt install libpulse-dev  (or equivalent)"
+else
+    # Download native source files
+    BUILD_DIR=$(mktemp -d)
+    mkdir -p "$BUILD_DIR/native/common" "$BUILD_DIR/native/linux"
+
+    native_ok=true
+    for nf in "${NATIVE_FILES[@]}"; do
+        url="$BASE_URL/$nf"
+        dest="$BUILD_DIR/$nf"
+        if ! curl -fsSL "$url" -o "$dest"; then
+            red "Failed to download $nf"
+            native_ok=false
+            break
+        fi
+    done
+
+    if $native_ok; then
+        # Build
+        if (cd "$BUILD_DIR/native/linux" && make -j"$(nproc)" 2>/dev/null); then
+            green "vis-capture built successfully"
+
+            # Install binary
+            mkdir -p "$HOME/.local/bin"
+            cp "$BUILD_DIR/native/linux/vis-capture" "$HOME/.local/bin/vis-capture"
+            chmod +x "$HOME/.local/bin/vis-capture"
+            green "Installed vis-capture to ~/.local/bin/"
+
+            # Install and enable systemd user service
+            mkdir -p "$HOME/.config/systemd/user"
+            cp "$BUILD_DIR/native/linux/clear-vis.service" "$HOME/.config/systemd/user/"
+            systemctl --user daemon-reload
+            systemctl --user enable clear-vis.service
+            systemctl --user restart clear-vis.service
+            green "Enabled clear-vis systemd user service (auto-starts on login)"
+        else
+            yellow "vis-capture build failed — visualizer will not work"
+            yellow "You can build manually: cd native/linux && make"
+        fi
+    fi
+
+    rm -rf "$BUILD_DIR"
+fi
+
+# ── 9. Launch Spotify ────────────────────────────────────────────────────────
 cyan "Launching Spotify"
 
 if command -v flatpak &>/dev/null && flatpak list 2>/dev/null | grep -q com.spotify.Client; then

@@ -89,6 +89,15 @@ int main() {
             SEND_FPS, WS_PORT);
 
     while (g_running) {
+        // Accept new WebSocket client if needed
+        ws.poll();
+
+        // If no client is connected, don't read audio — just idle
+        if (!ws.hasClient()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            continue;
+        }
+
         // Read exactly FFT_SIZE float samples from PulseAudio
         int ret = pa_simple_read(pa, samples, sizeof(samples), &paErr);
         if (ret < 0) {
@@ -98,9 +107,6 @@ int main() {
 
         // Compute FFT and bin into bars
         computeBars(samples, bars);
-
-        // Accept new WebSocket client if needed
-        ws.poll();
 
         // Rate-limit sends to SEND_FPS
         auto now = Clock::now();

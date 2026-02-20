@@ -1,0 +1,13 @@
+[Unit]
+Description=Clear Spotify Visualizer Audio Bridge
+Documentation=https://github.com/wktkow/clear-spotify-theme
+After=pulseaudio.service pipewire-pulse.service
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/vis-capture
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

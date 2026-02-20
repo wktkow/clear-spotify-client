@@ -136,6 +136,15 @@ int main() {
             SEND_FPS, WS_PORT);
 
     while (g_running) {
+        // Accept new WebSocket client if needed
+        ws.poll();
+
+        // If no client is connected, don't read audio — just idle
+        if (!ws.hasClient()) {
+            Sleep(50);
+            continue;
+        }
+
         // Read available data from WASAPI
         UINT32 packetLength = 0;
         hr = captureClient->GetNextPacketSize(&packetLength);
@@ -177,9 +186,6 @@ int main() {
             int keep = FFT_SIZE / 2;
             memmove(sampleBuf, sampleBuf + (FFT_SIZE - keep), keep * sizeof(float));
             samplePos = keep;
-
-            // Accept new WebSocket client if needed
-            ws.poll();
 
             // Rate-limit sends
             auto now = Clock::now();
