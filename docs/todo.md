@@ -13,7 +13,7 @@
 
 ## Features
 
-- Add built-in audio visualizers (particle effects, animating bars, reactive background)
+- ~~Add built-in audio visualizers (particle effects, animating bars, reactive background)~~ — real-time bar visualizer via native audio capture (C++ daemon + WebSocket)
 - Establish semi-framework boundaries
 
 ## Experimental

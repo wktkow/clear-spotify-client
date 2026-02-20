@@ -808,6 +808,286 @@
 
   initLyricsFade();
 
+  // --- Audio Visualizer ---
+  // Connects to a native audio capture daemon via WebSocket on localhost:7700.
+  // The daemon captures real audio output (PulseAudio/PipeWire on Linux,
+  // WASAPI loopback on Windows), performs FFT, and sends 24 frequency bars.
+  function initVisualizer() {
+    const BAR_COUNT = 24;
+    const TARGET_FPS = 60;
+    const FRAME_MS = 1000 / TARGET_FPS;
+    const WS_PORT = 7700;
+    const WS_RECONNECT_MS = 2000;
+
+    let active = false;
+    let animId = null;
+    let lastFrame = 0;
+    let overlay = null;
+    let canvas = null;
+    let ctx = null;
+    let msgEl = null;
+
+    // WebSocket state
+    let ws = null;
+    let wsConnected = false;
+    const wsData = new Float32Array(BAR_COUNT);
+    const displayBars = new Float32Array(BAR_COUNT);
+    let reconnectTimer = null;
+    let debugFrameCount = 0;
+
+    // --- WebSocket connection to native audio capture ---
+    function connectWs() {
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+      }
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+
+      try {
+        ws = new WebSocket(`ws://127.0.0.1:${WS_PORT}`);
+      } catch (e) {
+        wsConnected = false;
+        showMessage(
+          "Audio bridge not running",
+          "Start vis-capture to enable the visualizer.",
+        );
+        reconnectTimer = setTimeout(connectWs, WS_RECONNECT_MS);
+        return;
+      }
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        wsConnected = true;
+        hideMessage();
+        console.log("[VIS] WebSocket connected to audio bridge");
+      };
+
+      ws.onmessage = (e) => {
+        if (e.data instanceof ArrayBuffer) {
+          const data = new Float32Array(e.data);
+          const len = Math.min(BAR_COUNT, data.length);
+          for (let i = 0; i < len; i++) wsData[i] = data[i];
+        }
+      };
+
+      ws.onclose = () => {
+        wsConnected = false;
+        if (active) {
+          showMessage(
+            "Audio bridge disconnected",
+            "Reconnecting...",
+          );
+          reconnectTimer = setTimeout(connectWs, WS_RECONNECT_MS);
+        }
+      };
+
+      ws.onerror = () => {
+        try {
+          ws.close();
+        } catch (e) {}
+      };
+    }
+
+    function disconnectWs() {
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+        ws = null;
+      }
+      wsConnected = false;
+    }
+
+    // --- Button injection ---
+    function injectButton() {
+      if (document.querySelector(".clear-visualizer-btn")) return true;
+      const lyricsBtn = document.querySelector('[data-testid="lyrics-button"]');
+      if (!lyricsBtn) return false;
+
+      const btn = document.createElement("button");
+      btn.className = "clear-visualizer-btn";
+      btn.setAttribute("aria-label", "Audio Visualizer");
+      btn.title = "Audio Visualizer";
+      btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="6" width="2" height="4" rx="0.5"/><rect x="4.5" y="3" width="2" height="10" rx="0.5"/><rect x="8" y="5" width="2" height="6" rx="0.5"/><rect x="11.5" y="2" width="2" height="12" rx="0.5"/></svg>`;
+      btn.addEventListener("click", toggle);
+
+      lyricsBtn.after(btn);
+      return true;
+    }
+
+    function waitForButton() {
+      if (injectButton()) {
+        const bar = document.querySelector(
+          ".main-nowPlayingBar-nowPlayingBar, .Root__now-playing-bar",
+        );
+        if (bar) {
+          new MutationObserver(() => injectButton()).observe(bar, {
+            childList: true,
+            subtree: true,
+          });
+        }
+      } else {
+        setTimeout(waitForButton, 500);
+      }
+    }
+
+    // --- Message display ---
+    function showMessage(title, text) {
+      if (!msgEl) return;
+      msgEl.style.display = "flex";
+      msgEl.querySelector(".clear-visualizer-message-title").textContent =
+        title;
+      msgEl.querySelector(".clear-visualizer-message-text").textContent = text;
+      if (canvas) canvas.style.display = "none";
+    }
+
+    function hideMessage() {
+      if (msgEl) msgEl.style.display = "none";
+      if (canvas) canvas.style.display = "block";
+    }
+
+    // --- Overlay creation ---
+    function ensureOverlay() {
+      if (overlay && overlay.parentNode) return;
+      const mainView = document.querySelector(".Root__main-view");
+      if (!mainView) return;
+
+      overlay = document.createElement("div");
+      overlay.id = "clear-visualizer-overlay";
+
+      canvas = document.createElement("canvas");
+      canvas.id = "clear-visualizer-canvas";
+      canvas.style.display = "none";
+      overlay.appendChild(canvas);
+
+      msgEl = document.createElement("div");
+      msgEl.className = "clear-visualizer-message";
+      msgEl.innerHTML =
+        `<div class="clear-visualizer-message-icon">` +
+        `<svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="6" width="2" height="4" rx="0.5" opacity="0.3"/><rect x="4.5" y="3" width="2" height="10" rx="0.5" opacity="0.3"/><rect x="8" y="5" width="2" height="6" rx="0.5" opacity="0.3"/><rect x="11.5" y="2" width="2" height="12" rx="0.5" opacity="0.3"/></svg>` +
+        `</div>` +
+        `<div class="clear-visualizer-message-title">Connecting…</div>` +
+        `<div class="clear-visualizer-message-text">Waiting for audio capture bridge.</div>`;
+      msgEl.style.display = "flex";
+      overlay.appendChild(msgEl);
+
+      const closeBtn = document.createElement("button");
+      closeBtn.className = "clear-visualizer-close";
+      closeBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.293 3.293a1 1 0 0 1 1.414 0L12 10.586l7.293-7.293a1 1 0 1 1 1.414 1.414L13.414 12l7.293 7.293a1 1 0 0 1-1.414 1.414L12 13.414l-7.293 7.293a1 1 0 0 1-1.414-1.414L10.586 12 3.293 4.707a1 1 0 0 1 0-1.414"/></svg>`;
+      closeBtn.addEventListener("click", toggle);
+      overlay.appendChild(closeBtn);
+
+      if (getComputedStyle(mainView).position === "static") {
+        mainView.style.position = "relative";
+      }
+      mainView.appendChild(overlay);
+      ctx = canvas.getContext("2d");
+    }
+
+    function resizeCanvas() {
+      if (!canvas || !overlay) return;
+      const dpr = window.devicePixelRatio || 1;
+      const w = overlay.clientWidth;
+      const h = overlay.clientHeight;
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width = w + "px";
+        canvas.style.height = h + "px";
+      }
+    }
+
+    // --- Render loop ---
+    function render(ts) {
+      if (!active) return;
+      animId = requestAnimationFrame(render);
+
+      if (ts - lastFrame < FRAME_MS) return;
+      lastFrame = ts;
+
+      if (!ctx) return;
+
+      resizeCanvas();
+      const W = canvas.width;
+      const H = canvas.height;
+
+      // Smooth bars toward live WebSocket data
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const target = wsData[i];
+        if (target > displayBars[i]) {
+          displayBars[i] += (target - displayBars[i]) * 0.5;
+        } else {
+          displayBars[i] += (target - displayBars[i]) * 0.15;
+        }
+      }
+
+      ctx.clearRect(0, 0, W, H);
+
+      const dpr = window.devicePixelRatio || 1;
+      const padding = Math.round(24 * dpr);
+      const usableW = W - padding * 2;
+      const gap = Math.round(3 * dpr);
+      const barW = Math.round(
+        Math.max(2, (usableW - gap * (BAR_COUNT - 1)) / BAR_COUNT),
+      );
+      const maxH = H - padding * 2;
+      const radius = Math.min(Math.round(barW * 0.35), Math.round(4 * dpr));
+      const baseY = H - padding;
+
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const norm = Math.max(0, Math.min(1, displayBars[i]));
+        const h = Math.round(Math.max(3 * dpr, norm * maxH));
+        const x = Math.round(padding + i * (barW + gap));
+        const y = baseY - h;
+
+        const alpha = 0.4 + norm * 0.6;
+        ctx.fillStyle = `rgba(250, 250, 250, ${alpha})`;
+        if (ctx.roundRect) {
+          ctx.beginPath();
+          ctx.roundRect(x, y, barW, h, [radius, radius, 0, 0]);
+          ctx.fill();
+        } else {
+          ctx.fillRect(x, y, barW, h);
+        }
+      }
+    }
+
+    // --- Toggle ---
+    async function toggle() {
+      active = !active;
+      const btn = document.querySelector(".clear-visualizer-btn");
+      if (active) {
+        ensureOverlay();
+        if (overlay) overlay.classList.add("clear-visualizer-overlay--open");
+        if (btn) btn.classList.add("clear-visualizer-btn--active");
+        displayBars.fill(0);
+        wsData.fill(0);
+        debugFrameCount = 0;
+        connectWs();
+        lastFrame = 0;
+        animId = requestAnimationFrame(render);
+      } else {
+        if (overlay) overlay.classList.remove("clear-visualizer-overlay--open");
+        if (animId) cancelAnimationFrame(animId);
+        animId = null;
+        disconnectWs();
+        if (btn) btn.classList.remove("clear-visualizer-btn--active");
+      }
+    }
+
+    waitForButton();
+  }
+
+  initVisualizer();
+
   // --- Fade out startup splash (wait for full page load + images) ---
   // Splash is desktop-only; Chrome extension sets __clearExtensionNoSplash.
   if (

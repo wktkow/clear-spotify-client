@@ -2086,3 +2086,107 @@ body.clear-hide-marketplace .clear-kebab-item-marketplace {
 .main-globalNav-searchContainer > button[aria-label="Home"] {
   display: none !important;
 }
+
+/* --- Audio Visualizer --- */
+.clear-visualizer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--border-radius-md);
+  background: none;
+  color: var(--spice-subtext);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.clear-visualizer-btn:hover {
+  color: var(--spice-text);
+  background-color: var(--spice-button-hover);
+}
+
+.clear-visualizer-btn--active {
+  color: var(--spice-text);
+}
+
+#clear-visualizer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(var(--spice-rgb-main), 0.95);
+  border-radius: var(--border-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s;
+}
+
+#clear-visualizer-overlay.clear-visualizer-overlay--open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.clear-visualizer-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 22rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.clear-visualizer-message-icon {
+  color: var(--spice-subtext);
+  opacity: 0.5;
+}
+
+.clear-visualizer-message-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--spice-text);
+}
+
+.clear-visualizer-message-text {
+  font-size: 0.8125rem;
+  color: var(--spice-subtext);
+  line-height: 1.6;
+}
+
+#clear-visualizer-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.clear-visualizer-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: var(--default-border);
+  border-radius: var(--border-radius-md);
+  background-color: rgba(var(--spice-rgb-main), 0.5);
+  color: var(--spice-subtext);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+  z-index: 1;
+}
+
+.clear-visualizer-close:hover {
+  color: var(--spice-text);
+  background-color: var(--spice-button-hover);
+}

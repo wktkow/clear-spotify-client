@@ -3,5 +3,6 @@
     "spicetify": true,
     "/opt/scripts/s9": true,
     "flatpak": true
-  }
+  },
+  "C_Cpp.default.compilerPath": "/usr/bin/gcc-12"
 }

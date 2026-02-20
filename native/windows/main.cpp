@@ -1,0 +1,205 @@
+// main.cpp — Windows audio capture for the Spotify visualizer.
+// Captures from the WASAPI loopback (default audio output),
+// runs FFT, and sends 24 frequency bars over WebSocket at 60fps.
+//
+// Build:  build.bat  (or: cl /O2 /EHsc /std:c++17 main.cpp ole32.lib ws2_32.lib)
+// Run:    vis-capture.exe
+// Stop:   Ctrl-C
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
+#include <functiondiscoverykeys_devpkey.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <cstring>
+#include <atomic>
+#include <chrono>
+#include <thread>
+
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "ws2_32.lib")
+
+#include "../common/protocol.h"
+#include "../common/fft.h"
+#include "../common/ws_server.h"
+
+static std::atomic<bool> g_running{true};
+
+static BOOL WINAPI consoleHandler(DWORD sig) {
+    if (sig == CTRL_C_EVENT || sig == CTRL_CLOSE_EVENT) {
+        g_running = false;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+// Helper: convert interleaved multi-channel audio to mono float
+static void toMono(const BYTE* src, float* dst, UINT32 frames,
+                   WORD channels, WORD bitsPerSample, bool isFloat) {
+    for (UINT32 f = 0; f < frames; f++) {
+        float sum = 0.0f;
+        for (WORD c = 0; c < channels; c++) {
+            if (isFloat && bitsPerSample == 32) {
+                sum += ((const float*)src)[f * channels + c];
+            } else if (bitsPerSample == 16) {
+                int16_t s16 = ((const int16_t*)src)[f * channels + c];
+                sum += s16 / 32768.0f;
+            } else if (bitsPerSample == 24) {
+                const BYTE* p = src + (f * channels + c) * 3;
+                int32_t s24 = (p[0]) | (p[1] << 8) | ((int8_t)p[2] << 16);
+                sum += s24 / 8388608.0f;
+            }
+        }
+        dst[f] = sum / channels;
+    }
+}
+
+int main() {
+    SetConsoleCtrlHandler(consoleHandler, TRUE);
+    fprintf(stderr, "[vis] Spotify visualizer audio bridge (Windows)\n");
+    fprintf(stderr, "[vis] FFT size: %d, bars: %d\n", FFT_SIZE, BAR_COUNT);
+
+    // --- Start WebSocket server ---
+    WsServer ws;
+    if (!ws.start(WS_PORT)) {
+        fprintf(stderr, "[vis] FATAL: could not start WebSocket server\n");
+        return 1;
+    }
+
+    // --- Initialize COM and WASAPI ---
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice* device = nullptr;
+    IAudioClient* audioClient = nullptr;
+    IAudioCaptureClient* captureClient = nullptr;
+
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+                                  CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
+                                  (void**)&enumerator);
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: CoCreateInstance failed\n"); return 1; }
+
+    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: GetDefaultAudioEndpoint failed\n"); return 1; }
+
+    hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)&audioClient);
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: Activate IAudioClient failed\n"); return 1; }
+
+    WAVEFORMATEX* mixFormat = nullptr;
+    hr = audioClient->GetMixFormat(&mixFormat);
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: GetMixFormat failed\n"); return 1; }
+
+    fprintf(stderr, "[vis] Mix format: %d Hz, %d ch, %d bits\n",
+            mixFormat->nSamplesPerSec, mixFormat->nChannels, mixFormat->wBitsPerSample);
+
+    // Initialize in loopback mode — captures the audio output
+    hr = audioClient->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        200000,  // 20ms buffer in 100ns units
+        0,
+        mixFormat,
+        nullptr
+    );
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: Initialize loopback failed (0x%lx)\n", hr); return 1; }
+
+    hr = audioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient);
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: GetService failed\n"); return 1; }
+
+    hr = audioClient->Start();
+    if (FAILED(hr)) { fprintf(stderr, "[vis] FATAL: Start failed\n"); return 1; }
+
+    fprintf(stderr, "[vis] WASAPI loopback started\n");
+
+    // --- Main loop ---
+    float sampleBuf[FFT_SIZE];
+    int samplePos = 0;
+    float bars[BAR_COUNT];
+
+    bool isFloat = (mixFormat->wFormatTag == WAVE_FORMAT_IEEE_FLOAT);
+    if (mixFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+        WAVEFORMATEXTENSIBLE* ext = (WAVEFORMATEXTENSIBLE*)mixFormat;
+        isFloat = (ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+    }
+
+    using Clock = std::chrono::steady_clock;
+    const auto frameInterval = std::chrono::microseconds(1000000 / SEND_FPS);
+    auto nextSend = Clock::now();
+
+    fprintf(stderr, "[vis] Running at %d fps, waiting for client on ws://127.0.0.1:%d\n",
+            SEND_FPS, WS_PORT);
+
+    while (g_running) {
+        // Read available data from WASAPI
+        UINT32 packetLength = 0;
+        hr = captureClient->GetNextPacketSize(&packetLength);
+        if (FAILED(hr)) break;
+
+        while (packetLength > 0) {
+            BYTE* data = nullptr;
+            UINT32 numFrames = 0;
+            DWORD flags = 0;
+            hr = captureClient->GetBuffer(&data, &numFrames, &flags, nullptr, nullptr);
+            if (FAILED(hr)) break;
+
+            if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+                // Silence — fill with zeros
+                for (UINT32 i = 0; i < numFrames && samplePos < FFT_SIZE; i++) {
+                    sampleBuf[samplePos++] = 0.0f;
+                }
+            } else {
+                // Convert to mono float
+                float mono[4096]; // max frames per packet
+                UINT32 toConvert = (numFrames > 4096) ? 4096 : numFrames;
+                toMono(data, mono, toConvert, mixFormat->nChannels,
+                       mixFormat->wBitsPerSample, isFloat);
+                for (UINT32 i = 0; i < toConvert && samplePos < FFT_SIZE; i++) {
+                    sampleBuf[samplePos++] = mono[i];
+                }
+            }
+
+            captureClient->ReleaseBuffer(numFrames);
+            hr = captureClient->GetNextPacketSize(&packetLength);
+            if (FAILED(hr)) break;
+        }
+
+        // When we have enough samples, compute FFT
+        if (samplePos >= FFT_SIZE) {
+            computeBars(sampleBuf, bars);
+
+            // Shift buffer: keep last half for overlap
+            int keep = FFT_SIZE / 2;
+            memmove(sampleBuf, sampleBuf + (FFT_SIZE - keep), keep * sizeof(float));
+            samplePos = keep;
+
+            // Accept new WebSocket client if needed
+            ws.poll();
+
+            // Rate-limit sends
+            auto now = Clock::now();
+            if (now >= nextSend && ws.hasClient()) {
+                ws.sendBinary(bars, sizeof(bars));
+                nextSend = now + frameInterval;
+            }
+        }
+
+        Sleep(1); // ~1ms poll interval
+    }
+
+    fprintf(stderr, "\n[vis] Shutting down...\n");
+    audioClient->Stop();
+    captureClient->Release();
+    audioClient->Release();
+    device->Release();
+    enumerator->Release();
+    CoTaskMemFree(mixFormat);
+    CoUninitialize();
+    ws.stop();
+    return 0;
+}
