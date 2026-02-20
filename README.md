@@ -41,7 +41,7 @@ iwr -useb https://raw.githubusercontent.com/spicetify/cli/main/install.ps1 | iex
 3.  Copy and paste the below code snippet:
 
 ```powershell
-<>
+iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-theme/main/powershell/install.ps1 | iex
 ```
 
 (Installs [Clear Spotify](https://github.com/wktkow/clear-spotify-theme))

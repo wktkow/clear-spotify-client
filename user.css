@@ -1694,6 +1694,26 @@ aside[aria-label="Now playing bar"] {
   width: 1.6em !important;
   height: 1.6em !important;
 }
+/* Play button overlay in library — constrain to image size */
+.main-yourLibraryX-listItem div:has(> .x-entityImage-imageContainer) {
+  position: relative !important;
+  width: 1.6em !important;
+  height: 1.6em !important;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.main-yourLibraryX-listItem .x-entityImage-imageContainer + div {
+  position: absolute !important;
+  inset: 0;
+}
+.main-yourLibraryX-listItem .main-playButton-PlayButton,
+.main-yourLibraryX-listItem .main-playButton-PlayButton button {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
 .main-yourLibraryX-listRowSubtitle {
   padding-top: 0px;
 }
