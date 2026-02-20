@@ -25,14 +25,15 @@ constexpr float GRAVITY_STEP    = 0.028f;
 constexpr float GRAVITY_MOD     = 1.54f / NOISE_REDUCTION;
 
 // Auto-sensitivity (global gain).
-// Cava: attack 0.98 per frame on overshoot, release 1.001 per frame.
+// attack 0.98 per frame on overshoot, release 1.002 per frame.
 // sens_init mode ramps fast (1.1x/frame) until first overshoot.
-constexpr float SENS_INIT       = 1.0f;
+// Start conservative (0.2) — equilibrium is near 0.77 for typical music.
+constexpr float SENS_INIT       = 0.2f;
 constexpr float SENS_ATTACK     = 0.98f;
 constexpr float SENS_RELEASE    = 1.002f;
 constexpr float SENS_INIT_BOOST = 1.1f;
 constexpr float SENS_MIN        = 0.02f;
-constexpr float SENS_MAX        = 100.0f;
+constexpr float SENS_MAX        = 20.0f;
 
 // Per-bar EQ: pow(freq/FREQ_MIN, EQ_POWER).
 // Boosts high-frequency bars to compensate for music having more
@@ -191,14 +192,15 @@ static void processFrame(const float* newSamples, float* bars) {
         g_prevOut[b] = rawBars[b];
 
         // Integral smoothing (temporal IIR low-pass filter).
-        // This is the single most important anti-jitter measure.
         // Accumulates: out = mem * NR + raw.  Steady-state gain ~ 1/(1-NR).
         rawBars[b] = g_mem[b] * NOISE_REDUCTION + rawBars[b];
-        g_mem[b] = rawBars[b];
 
-        // Clamp to [0, 1]
+        // Clamp to [0, 1], then store clamped value in mem.
+        // Without clamping mem, the accumulator builds up above 1.0 and
+        // bars lock at the ceiling — they can't fall because mem is too high.
         if (rawBars[b] > 1.0f) { overshoot = true; rawBars[b] = 1.0f; }
         if (rawBars[b] < 0.0f) rawBars[b] = 0.0f;
+        g_mem[b] = rawBars[b];
 
         bars[b] = rawBars[b];
     }

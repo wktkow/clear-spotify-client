@@ -220,12 +220,16 @@ public:
             hdr[9] = (uint8_t)(len);
         }
 
-        // Send header
-        int sent = send(clientSock, (const char*)hdr, hdrLen, 0);
+        // Send header + payload.  MSG_NOSIGNAL prevents SIGPIPE on Linux
+        // if the client disconnects between sends.
+        int flags = 0;
+#ifdef __linux__
+        flags = MSG_NOSIGNAL;
+#endif
+        int sent = send(clientSock, (const char*)hdr, hdrLen, flags);
         if (sent <= 0) { dropClient(); return false; }
 
-        // Send payload
-        sent = send(clientSock, (const char*)data, (int)len, 0);
+        sent = send(clientSock, (const char*)data, (int)len, flags);
         if (sent <= 0) { dropClient(); return false; }
 
         return true;

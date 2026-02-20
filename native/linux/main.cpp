@@ -28,6 +28,7 @@ static void onSignal(int) { g_running = false; }
 int main() {
     signal(SIGINT, onSignal);
     signal(SIGTERM, onSignal);
+    signal(SIGPIPE, SIG_IGN);
 
     fprintf(stderr, "[vis] Spotify visualizer audio bridge (Linux)\n");
     fprintf(stderr, "[vis] FFT %d, bars %d, %d Hz, %d fps (%d samples/frame)\n",
