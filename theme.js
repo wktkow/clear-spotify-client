@@ -808,17 +808,14 @@
   // --- Audio Visualizer ---
   // Connects to a native audio capture daemon via WebSocket on localhost:7700.
   // The daemon captures real audio output (PulseAudio/PipeWire on Linux,
-  // WASAPI loopback on Windows), performs FFT, and sends 24 frequency bars.
+  // WASAPI loopback on Windows), performs FFT, and sends 70 frequency bars.
   function initVisualizer() {
     const BAR_COUNT = 70;
-    const TARGET_FPS = 60;
-    const FRAME_MS = 1000 / TARGET_FPS;
     const WS_PORT = 7700;
     const WS_RECONNECT_MS = 2000;
 
     let active = false;
     let animId = null;
-    let lastFrame = 0;
     let overlay = null;
     let canvas = null;
     let ctx = null;
@@ -828,9 +825,7 @@
     let ws = null;
     let wsConnected = false;
     const wsData = new Float32Array(BAR_COUNT);
-    const displayBars = new Float32Array(BAR_COUNT);
     let reconnectTimer = null;
-    let debugFrameCount = 0;
 
     // --- WebSocket connection to native audio capture ---
     function connectWs() {
@@ -999,26 +994,15 @@
       }
     }
 
-    // --- Render loop (strict 60fps) ---
-    function render(ts) {
+    // --- Render loop ---
+    function render() {
       if (!active) return;
       animId = requestAnimationFrame(render);
-
-      const delta = ts - lastFrame;
-      if (delta < FRAME_MS) return;
-      lastFrame = ts - (delta % FRAME_MS);
-
       if (!ctx) return;
 
       resizeCanvas();
       const W = canvas.width;
       const H = canvas.height;
-
-      // Light lerp for sub-frame jitter between WS delivery and rAF
-      for (let i = 0; i < BAR_COUNT; i++) {
-        displayBars[i] += (wsData[i] - displayBars[i]) * 0.55;
-      }
-
       ctx.clearRect(0, 0, W, H);
 
       const dpr = window.devicePixelRatio || 1;
@@ -1031,13 +1015,12 @@
       const baseY = H - padding;
 
       for (let i = 0; i < BAR_COUNT; i++) {
-        const v = Math.max(0, Math.min(1, displayBars[i]));
+        const v = wsData[i];
         const h = Math.max(1 * dpr, v * maxH);
         const x = padding + i * (barW + gap);
         const y = baseY - h;
 
-        const alpha = 0.3 + v * 0.7;
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + v * 0.7})`;
         if (ctx.roundRect) {
           ctx.beginPath();
           ctx.roundRect(x, y, barW, h, [radius, radius, 0, 0]);
@@ -1056,11 +1039,8 @@
         ensureOverlay();
         if (overlay) overlay.classList.add("clear-visualizer-overlay--open");
         if (btn) btn.classList.add("clear-visualizer-btn--active");
-        displayBars.fill(0);
         wsData.fill(0);
-        debugFrameCount = 0;
         connectWs();
-        lastFrame = 0;
         animId = requestAnimationFrame(render);
       } else {
         if (overlay) overlay.classList.remove("clear-visualizer-overlay--open");
