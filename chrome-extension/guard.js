@@ -14,87 +14,120 @@
 
   const DISABLED_KEY = "clear-extension-disabled";
 
-  /* ── Diagnostics v5 ─────────────────────────────────────────────── */
+  /* ── Diagnostics v6 – layout discovery ───────────────────────────── */
 
-  console.log("[Clear Theme] guard.js v5-deep loaded");
+  console.log("[Clear Theme] guard.js v6-layout loaded");
 
-  function checkTheme(label) {
+  function dumpLayout() {
+    console.log("[Clear Theme] === LAYOUT DUMP ===");
+
+    // 1. Check our CSS is active
     const marker = getComputedStyle(document.documentElement)
       .getPropertyValue("--clear-ext-loaded")
       .trim();
-    const spiceText = getComputedStyle(document.documentElement)
-      .getPropertyValue("--spice-text")
-      .trim();
-    console.log(
-      `[Clear Theme] ${label}: marker=${marker} --spice-text=${spiceText} sheets=${document.styleSheets.length}`,
-    );
+    console.log(`[Clear Theme] marker=${marker} sheets=${document.styleSheets.length}`);
 
-    // Find OUR stylesheet in document.styleSheets
-    for (let i = 0; i < document.styleSheets.length; i++) {
-      const sheet = document.styleSheets[i];
-      try {
-        const rules = sheet.cssRules;
-        if (!rules) continue;
-        for (let j = 0; j < Math.min(rules.length, 10); j++) {
-          if (
-            rules[j].cssText &&
-            rules[j].cssText.includes("--clear-ext-loaded")
-          ) {
-            console.log(
-              `[Clear Theme]   OUR SHEET: index=${i} rules=${rules.length} href=${sheet.href} ownerNode=${sheet.ownerNode?.tagName || "none"} disabled=${sheet.disabled}`,
-            );
-            for (let k = 0; k < Math.min(rules.length, 5); k++) {
-              console.log(
-                `[Clear Theme]     rule[${k}]: ${rules[k].cssText.substring(0, 120)}`,
-              );
-            }
-            break;
-          }
+    // 2. Root element and its children (1 level)
+    const root = document.querySelector('[data-testid="root"]');
+    if (root) {
+      console.log(
+        `[Clear Theme] ROOT: <${root.tagName.toLowerCase()}> class="${root.className}"`,
+      );
+      for (const child of root.children) {
+        const id = child.id ? `#${child.id}` : "";
+        const tid = child.dataset.testid
+          ? `[testid=${child.dataset.testid}]`
+          : "";
+        const cls = child.className
+          ? ` class="${String(child.className).substring(0, 100)}"`
+          : "";
+        console.log(
+          `[Clear Theme]   child: <${child.tagName.toLowerCase()}${id}${tid}${cls}> children=${child.children.length}`,
+        );
+        // One more level for layout children
+        for (const gc of child.children) {
+          const gcId = gc.id ? `#${gc.id}` : "";
+          const gcTid = gc.dataset.testid
+            ? `[testid=${gc.dataset.testid}]`
+            : "";
+          const gcCls = gc.className
+            ? ` class="${String(gc.className).substring(0, 100)}"`
+            : "";
+          const gcTag = gc.tagName.toLowerCase();
+          console.log(
+            `[Clear Theme]     gc: <${gcTag}${gcId}${gcTid}${gcCls}> children=${gc.children.length}`,
+          );
         }
-      } catch (e) {
-        /* cross-origin */
+      }
+    } else {
+      console.log("[Clear Theme] ROOT: NOT FOUND");
+    }
+
+    // 3. Search for known data-testid layout elements
+    const testIds = [
+      "root",
+      "main-view",
+      "main-view-container",
+      "left-sidebar",
+      "right-sidebar",
+      "now-playing-bar",
+      "now-playing-widget",
+      "global-nav-bar",
+      "top-bar",
+      "player-controls",
+      "footer",
+      "buddy-feed",
+      "library",
+      "your-library",
+      "nav-bar",
+      "content-spacing",
+    ];
+    console.log("[Clear Theme] === DATA-TESTID SEARCH ===");
+    for (const tid of testIds) {
+      const el = document.querySelector(`[data-testid="${tid}"]`);
+      if (el) {
+        console.log(
+          `[Clear Theme]   ${tid}: <${el.tagName.toLowerCase()}> class="${String(el.className).substring(0, 120)}"`,
+        );
       }
     }
 
-    // Check computed styles on key elements
-    const navBar = document.getElementById("global-nav-bar");
-    if (navBar) {
-      const cs = getComputedStyle(navBar);
+    // 4. Search for Root__* classes (Spicetify injects these on desktop)
+    const rootEls = document.querySelectorAll('[class*="Root__"]');
+    console.log(
+      `[Clear Theme] === Root__* elements: ${rootEls.length} ===`,
+    );
+    rootEls.forEach((el) => {
       console.log(
-        `[Clear Theme]   #global-nav-bar: opacity=${cs.opacity} position=${cs.position} display=${cs.display}`,
+        `[Clear Theme]   <${el.tagName.toLowerCase()}> class="${String(el.className).substring(0, 120)}"`,
       );
-    } else {
-      console.log(`[Clear Theme]   #global-nav-bar: NOT IN DOM`);
-    }
+    });
 
-    const mainView = document.querySelector(".Root__main-view");
-    if (mainView) {
-      const cs = getComputedStyle(mainView);
+    // 5. Search for main-nowPlayingBar (used heavily in our CSS)
+    const npBar = document.querySelector(
+      '[class*="main-nowPlayingBar"], footer',
+    );
+    if (npBar) {
       console.log(
-        `[Clear Theme]   .Root__main-view: borderRadius=${cs.borderRadius} border=${cs.border.substring(0, 60)}`,
-      );
-    } else {
-      console.log(`[Clear Theme]   .Root__main-view: NOT IN DOM`);
-    }
-
-    const navBarEl = document.querySelector(".Root__nav-bar");
-    if (navBarEl) {
-      const cs = getComputedStyle(navBarEl);
-      console.log(
-        `[Clear Theme]   .Root__nav-bar: gridArea=${cs.gridArea}`,
+        `[Clear Theme]   nowPlayingBar: <${npBar.tagName.toLowerCase()}> class="${String(npBar.className).substring(0, 120)}"`,
       );
     }
 
-    if (document.body) {
-      const cs = getComputedStyle(document.body);
-      console.log(
-        `[Clear Theme]   body: color=${cs.color} classList=${document.body.className.substring(0, 80)}`,
-      );
-    }
+    // 6. Find elements with class containing "main-" (Spotify's BEM naming)
+    const mainEls = new Set();
+    document.querySelectorAll('[class*="main-"]').forEach((el) => {
+      String(el.className)
+        .split(/\s+/)
+        .forEach((c) => {
+          if (c.startsWith("main-")) mainEls.add(c);
+        });
+    });
+    console.log(
+      `[Clear Theme] === Unique main-* classes (${mainEls.size}): ${[...mainEls].sort().join(", ")} ===`,
+    );
   }
 
-  setTimeout(() => checkTheme("AT 3s"), 3000);
-  setTimeout(() => checkTheme("AT 10s"), 10000);
+  setTimeout(dumpLayout, 5000);
 
   /* ── CSS toggle ───────────────────────────────────────────────────── */
 
