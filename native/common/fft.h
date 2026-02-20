@@ -27,11 +27,18 @@ constexpr float GRAVITY_MOD     = 1.54f / NOISE_REDUCTION;
 // Auto-sensitivity (global gain).
 // attack 0.98 per frame on overshoot, release 1.001 per frame.
 // sens_init mode ramps fast (1.1x/frame) until first overshoot.
-// Start at 1.0 (cava default) so bars respond immediately.
-constexpr float SENS_INIT       = 1.0f;
+//
+// NOTE: cava uses SENS_INIT=1.0, no cap, no audio gate.  This works for
+// cava because audio is already playing when the user starts it.  Our daemon
+// has a silence→noise→quiet→loud transition every client reconnect, so the
+// uncapped boost rockets sens to SENS_MAX on microscopic PA warmup noise,
+// causing a multi-second lockup when real music arrives.  We start lower
+// (0.3, near typical steady-state 0.2–0.3) and cap the boost early.
+constexpr float SENS_INIT       = 0.3f;
 constexpr float SENS_ATTACK     = 0.98f;
 constexpr float SENS_RELEASE    = 1.001f;
 constexpr float SENS_INIT_BOOST = 1.1f;
+constexpr float SENS_INIT_CAP   = 0.5f;  // disable sensInit when exceeded
 constexpr float SENS_MIN        = 0.02f;
 constexpr float SENS_MAX        = 20.0f;
 
@@ -147,6 +154,14 @@ static void processFrame(const float* newSamples, float* bars) {
     memcpy(g_inputBuf + (FFT_SIZE - FRAME_SAMPLES), newSamples,
            FRAME_SAMPLES * sizeof(float));
 
+    // 1b. Peak audio level of new chunk — gates sensInit boost so
+    //     microscopic PA warmup noise doesn't trigger the fast ramp-up.
+    float audioMax = 0.0f;
+    for (int i = 0; i < FRAME_SAMPLES; i++) {
+        float a = fabsf(newSamples[i]);
+        if (a > audioMax) audioMax = a;
+    }
+
     // 2. Hann window over full buffer -> FFT
     static Complex fftBuf[FFT_SIZE];
     for (int i = 0; i < FFT_SIZE; i++) {
@@ -210,13 +225,18 @@ static void processFrame(const float* newSamples, float* bars) {
 
     // 6. Auto-sensitivity (cava-style):
     //    overshoot -> gently reduce.  Quiet -> slowly grow.
-    //    Initial mode ramps fast (1.1x/frame) until first overshoot.
+    //    Initial mode ramps fast (1.1x/frame) until first overshoot,
+    //    but only when real audio is present (audioMax > 0.01) and
+    //    capped at SENS_INIT_CAP to limit lockup to ~0.5s.
     if (overshoot) {
         g_sens *= SENS_ATTACK;
         g_sensInit = false;
     } else if (!silence) {
         g_sens *= SENS_RELEASE;
-        if (g_sensInit) g_sens *= SENS_INIT_BOOST;
+        if (g_sensInit) {
+            if (audioMax > 0.01f) g_sens *= SENS_INIT_BOOST;
+            if (g_sens > SENS_INIT_CAP) g_sensInit = false;
+        }
     }
     g_sens = std::max(SENS_MIN, std::min(SENS_MAX, g_sens));
 }
