@@ -87,11 +87,20 @@
   }
 
   function getUsername() {
+    // Try href first (desktop link elements)
     const link = document.querySelector(
-      '[data-testid="user-widget-link"], .main-userWidget-box a[href*="/user/"]',
+      '.main-userWidget-box a[href*="/user/"], [data-testid="user-widget-link"][href]',
     );
     if (link) {
       const match = link.getAttribute("href")?.match(/\/user\/([^/?#]+)/);
+      if (match) return match[1];
+    }
+    // Fallback: extract from a profile link anywhere on the page
+    const profileLink = document.querySelector('a[href*="/user/"]');
+    if (profileLink) {
+      const match = profileLink
+        .getAttribute("href")
+        ?.match(/\/user\/([^/?#]+)/);
       if (match) return match[1];
     }
     return null;
@@ -392,21 +401,41 @@
     const dropdown = document.createElement("div");
     dropdown.className = "clear-kebab-dropdown";
 
+    const isWeb =
+      document.documentElement.classList.contains(
+        "spotify__container--is-web",
+      ) ||
+      document.body?.classList.contains("spotify__container--is-web") ||
+      document.querySelector(".spotify__container--is-web");
+
     const items = [
-      {
-        label: "Marketplace",
-        icon: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75z"/></svg>`,
-        action: () => {
-          window.location.href = "/marketplace";
-        },
-      },
+      // Marketplace: desktop only (Spicetify extension, doesn't exist on web)
+      ...(!isWeb
+        ? [
+            {
+              label: "Marketplace",
+              icon: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75zm0 5a.75.75 0 0 1 .75-.75h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1-.75-.75z"/></svg>`,
+              action: () => {
+                if (window.Spicetify?.Platform?.History) {
+                  Spicetify.Platform.History.push("/marketplace");
+                } else {
+                  window.location.href = "/marketplace";
+                }
+              },
+            },
+          ]
+        : []),
       {
         label: "Profile",
         icon: `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM3.5 4.5a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0zM8 10c-3.037 0-5.5 1.343-5.5 3v1.5h11V13c0-1.657-2.463-3-5.5-3zm-7 3c0-2.761 3.134-4.5 7-4.5s7 1.739 7 4.5v2a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2z"/></svg>`,
         action: () => {
           const username = getUsername();
           if (username) {
-            window.location.href = `/user/${username}`;
+            if (window.Spicetify?.Platform?.History) {
+              Spicetify.Platform.History.push(`/user/${username}`);
+            } else {
+              window.location.href = `/user/${username}`;
+            }
           }
         },
       },
