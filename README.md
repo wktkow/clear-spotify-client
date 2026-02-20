@@ -24,7 +24,7 @@ Opinionated Spotify client reducing screen clutter and improving readability.
 iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/powershell/install.ps1 | iex
 ```
 
-(Installs spicetify if needed, removes any previous Clear install, downloads fresh files, applies, and launches Spotify)
+(Removes any previous Clear install, downloads fresh files, applies, and launches Spotify)
 
 2. Enjoy!
 
