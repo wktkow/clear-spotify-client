@@ -34,7 +34,29 @@ $baseUrl = "https://raw.githubusercontent.com/$repo/$branch"
 $themeFiles = @("user.css", "color.ini", "theme.js")
 $themeName = "Clear"
 
-function Write-Step($msg) { Write-Host "`n>> $msg" -ForegroundColor Cyan }
+$script:totalSteps = 12
+$script:currentStep = 0
+$script:installTimer = [System.Diagnostics.Stopwatch]::StartNew()
+
+function Write-Step {
+    param([string]$msg, [string]$est)
+    $script:currentStep++
+    $pct = [int](($script:currentStep / $script:totalSteps) * 100)
+    $barWidth = 30
+    $filled = [int](($pct / 100) * $barWidth)
+    if ($filled -gt 0 -and $filled -lt $barWidth) {
+        $bar = ("=" * ($filled - 1)) + ">" + (" " * ($barWidth - $filled))
+    } elseif ($filled -ge $barWidth) {
+        $bar = "=" * $barWidth
+    } else {
+        $bar = " " * $barWidth
+    }
+    $stepLabel = "Step $($script:currentStep)/$($script:totalSteps)"
+    $estLabel = if ($est) { " (~$est)" } else { "" }
+    Write-Host ""
+    Write-Host "   [$bar] $pct%  $stepLabel" -ForegroundColor DarkCyan
+    Write-Host ">> $msg$estLabel" -ForegroundColor Cyan
+}
 function Write-Ok($msg)   { Write-Host "   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   $msg" -ForegroundColor Yellow }
 
@@ -47,7 +69,7 @@ function Exit-WithError {
 }
 
 # ── 1. Kill Spotify and vis-capture ──────────────────────────────────────────
-Write-Step "Stopping running processes"
+Write-Step "Stopping running processes" "2s"
 
 $spotifyProcs = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
 if ($spotifyProcs) {
@@ -66,7 +88,7 @@ if ($visProcs) {
 }
 
 # ── 2. Remove ALL existing Spotify installations ────────────────────────────
-Write-Step "Removing all existing Spotify installations"
+Write-Step "Removing all existing Spotify installations" "10s"
 
 # Remove Microsoft Store version
 try {
@@ -109,7 +131,7 @@ if (Get-Command winget -ErrorAction SilentlyContinue) {
 Write-Ok "All existing Spotify installations removed"
 
 # ── 3. Remove ALL existing spicetify ────────────────────────────────────────
-Write-Step "Removing all existing spicetify installations"
+Write-Step "Removing all existing spicetify installations" "5s"
 
 # Remove ClearVisCapture scheduled task
 $taskName = "ClearVisCapture"
@@ -164,7 +186,7 @@ if ($userPath) {
 Write-Ok "All existing spicetify installations removed"
 
 # ── 4. Install locked Spotify version ────────────────────────────────────────
-Write-Step "Installing Spotify $spotifyVersion"
+Write-Step "Installing Spotify $spotifyVersion" "2-3min"
 
 $spotifyInstaller = Join-Path $env:TEMP "spotify_installer.exe"
 $spotifyInstalled = $false
@@ -242,7 +264,7 @@ if (-not $spotifyInstalled) {
 }
 
 # Block Spotify auto-updates
-Write-Step "Blocking Spotify auto-updates"
+Write-Step "Blocking Spotify auto-updates" "2s"
 
 # Remove and lock the Update directory
 $updateDir = "$env:LOCALAPPDATA\Spotify\Update"
@@ -267,7 +289,7 @@ if (Test-Path $migrator) {
 Write-Ok "Auto-updates blocked"
 
 # ── 5. Install locked spicetify version ──────────────────────────────────────
-Write-Step "Installing spicetify v$spicetifyVersion"
+Write-Step "Installing spicetify v$spicetifyVersion" "15s"
 
 $spicetifyDir = "$env:LOCALAPPDATA\spicetify"
 New-Item -ItemType Directory -Force -Path $spicetifyDir | Out-Null
@@ -301,7 +323,7 @@ $spiceVer = & spicetify --version 2>$null
 Write-Ok "spicetify $spiceVer installed"
 
 # ── 6. Initialize spicetify ─────────────────────────────────────────────────
-Write-Step "Initializing spicetify"
+Write-Step "Initializing spicetify" "15s"
 
 # Need Spotify to have been launched at least once to create prefs
 if (-not (Test-Path "$env:APPDATA\Spotify\prefs")) {
@@ -353,7 +375,7 @@ $themesDir = Join-Path $spicetifyConfigDir "Themes"
 $clearDir  = Join-Path $themesDir $themeName
 
 # ── 7. Download theme files ─────────────────────────────────────────────────
-Write-Step "Downloading $themeName theme files"
+Write-Step "Downloading $themeName theme files" "5s"
 New-Item -ItemType Directory -Force -Path $clearDir | Out-Null
 
 foreach ($file in $themeFiles) {
@@ -370,7 +392,7 @@ foreach ($file in $themeFiles) {
 }
 
 # ── 8. Configure spicetify ──────────────────────────────────────────────────
-Write-Step "Configuring spicetify"
+Write-Step "Configuring spicetify" "2s"
 
 & spicetify config current_theme $themeName
 if ($LASTEXITCODE -ne 0) { Write-Warn "Failed to set theme (exit code $LASTEXITCODE)" }
@@ -385,8 +407,7 @@ if ($LASTEXITCODE -ne 0) { Write-Warn "Failed to reset color scheme (exit code $
 else { Write-Ok "Color scheme reset to default" }
 
 # ── 9. Apply ────────────────────────────────────────────────────────────────
-Write-Step "Applying theme"
-Write-Ok "This may take a minute — spicetify is processing Spotify files..."
+Write-Step "Applying theme" "30-60s"
 & spicetify backup apply
 if ($LASTEXITCODE -ne 0) {
     Write-Warn "spicetify backup apply failed (exit code $LASTEXITCODE), trying apply only..."
@@ -400,7 +421,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Ok "Theme applied successfully"
 
 # ── 10. Build and install audio visualizer daemon ─────────────────────────────
-Write-Step "Setting up audio visualizer daemon"
+Write-Step "Setting up audio visualizer daemon" "1-5min"
 
 # Permanent install location (survives theme folder wipes)
 $visDir = Join-Path $env:LOCALAPPDATA "ClearVis"
@@ -629,7 +650,7 @@ if ($nativeOk) {
 if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 
 # ── 11. Launch Spotify ───────────────────────────────────────────────────────
-Write-Step "Launching Spotify"
+Write-Step "Launching Spotify" "2s"
 
 if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
     Start-Process "$env:APPDATA\Spotify\Spotify.exe"
@@ -643,7 +664,16 @@ if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
     }
 }
 
-Write-Host "`n   Clear installed successfully!" -ForegroundColor Green
+$script:installTimer.Stop()
+$elapsed = $script:installTimer.Elapsed
+$mins = [math]::Floor($elapsed.TotalMinutes)
+$secs = $elapsed.Seconds
+$timeStr = if ($mins -gt 0) { "${mins}m ${secs}s" } else { "${secs}s" }
+
+Write-Host ""
+Write-Host "   [==============================] 100%  Done" -ForegroundColor DarkCyan
+Write-Host ""
+Write-Host "   Clear installed successfully! ($timeStr)" -ForegroundColor Green
 Write-Host "   Spotify $spotifyVersion (version-locked)" -ForegroundColor White
 Write-Host "   Spicetify v$spicetifyVersion (version-locked)" -ForegroundColor White
 Write-Host "   Enjoy your clean Spotify experience." -ForegroundColor White
