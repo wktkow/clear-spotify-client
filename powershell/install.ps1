@@ -1,23 +1,31 @@
 <#
 .SYNOPSIS
-    Installs the Clear Spotify client mod on Windows.
+    Installs the Clear Spotify client mod on Windows (version-locked).
 .DESCRIPTION
-    All-in-one installer that handles everything from scratch:
-    - Installs spicetify automatically if not present
-    - Kills Spotify if running
-    - Detects and fully removes any previous Clear installation
-    - Downloads fresh theme files (user.css, color.ini, theme.js)
-    - Installs Visual Studio Build Tools if needed (for compiling the visualizer)
+    Complete installer that enforces specific locked versions:
+    - Removes ALL existing Spotify installations (Desktop, Store)
+    - Removes ALL existing spicetify installations
+    - Installs locked Spotify version 1.2.74.477.g3be53afe
+    - Blocks Spotify auto-updates
+    - Installs locked spicetify v2.42.11
+    - Downloads and applies the Clear theme
     - Builds/downloads the audio visualizer daemon (vis-capture)
-    - Configures and applies the theme
     - Launches Spotify
 .NOTES
-    Run in PowerShell (admin not required unless Spotify is installed system-wide).
-    Requires Spotify Desktop to already be installed and logged in.
+    Run in PowerShell. Requires internet connection.
+    Spotify Desktop (not Store) will be installed to %APPDATA%\Spotify.
 #>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+# ── LOCKED VERSIONS — DO NOT CHANGE ─────────────────────────────────────────
+$spicetifyVersion = "2.42.11"
+$spotifyVersion = "1.2.74.477.g3be53afe"
+$spotifyShortVersion = "1.2.74.477"
+$spicetifyZipUrl = "https://github.com/spicetify/cli/releases/download/v${spicetifyVersion}/spicetify-${spicetifyVersion}-windows-x64.zip"
+$spotifyInstallerUrl = "https://upgrade.scdn.co/upgrade/client/win32-x86/spotify_installer-${spotifyVersion}.exe"
+# ─────────────────────────────────────────────────────────────────────────────
 
 $repo = "wktkow/clear-spotify-client"
 $branch = "main"
@@ -30,149 +38,295 @@ function Write-Ok($msg)   { Write-Host "   $msg" -ForegroundColor Green }
 function Write-Warn($msg) { Write-Host "   $msg" -ForegroundColor Yellow }
 
 function Exit-WithError {
+    param([string]$msg)
+    if ($msg) { Write-Host "`n   $msg" -ForegroundColor Red }
     Write-Host ""
     Read-Host "Press Enter to close"
     exit 1
 }
 
-# ── 1. Ensure spicetify is installed ─────────────────────────────────────────
-Write-Step "Checking spicetify installation"
-$spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
-if (-not $spicetifyCmd) {
-    Write-Warn "spicetify not found — installing automatically..."
-    try {
-        # Disable strict mode — the spicetify installer uses uninitialized
-        # variables ($v) that blow up under Set-StrictMode -Version Latest.
-        Set-StrictMode -Off
-        $installerContent = (Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/spicetify/cli/main/install.ps1").Content
-        # Auto-accept Spicetify Marketplace installation (choice 0 = Yes)
-        $installerContent = $installerContent -replace '\$choice\s*=\s*\$Host\.UI\.PromptForChoice\([^)]*Marketplace[^)]*\)', '$choice = 0'
-        Invoke-Expression $installerContent
-    } catch {
-        Write-Host "`n   Failed to install spicetify: $_" -ForegroundColor Red
-        Write-Host "   Install it manually: https://spicetify.app" -ForegroundColor Red
-        Exit-WithError
-    } finally {
-        Set-StrictMode -Version Latest
-    }
+# ── 1. Kill Spotify and vis-capture ──────────────────────────────────────────
+Write-Step "Stopping running processes"
 
-    # Refresh PATH so we can find the new binary
-    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
-    $spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
-    if (-not $spicetifyCmd) {
-        # Try the default install location directly
-        $defaultSpicetify = Join-Path $env:LOCALAPPDATA "spicetify\spicetify.exe"
-        if (Test-Path $defaultSpicetify) {
-            $env:PATH = (Split-Path $defaultSpicetify) + ";" + $env:PATH
-            $spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
-        }
-    }
-    if (-not $spicetifyCmd) {
-        Write-Host "`n   spicetify installed but not found in PATH." -ForegroundColor Red
-        Write-Host "   Close and reopen PowerShell, then run this script again." -ForegroundColor Yellow
-        Exit-WithError
-    }
-    Write-Ok "spicetify installed successfully"
-} else {
-    Write-Ok "spicetify found at $($spicetifyCmd.Source)"
-}
-
-# ── 2. Kill Spotify ─────────────────────────────────────────────────────────
-Write-Step "Stopping Spotify"
-$procs = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
-if ($procs) {
-    $procs | Stop-Process -Force
+$spotifyProcs = Get-Process -Name "Spotify" -ErrorAction SilentlyContinue
+if ($spotifyProcs) {
+    $spotifyProcs | Stop-Process -Force
     Start-Sleep -Seconds 2
     Write-Ok "Spotify stopped"
 } else {
     Write-Ok "Spotify was not running"
 }
 
-# ── 3. Find spicetify config directory ───────────────────────────────────────
-Write-Step "Locating spicetify config"
-$spicetifyDir = $null
+$visProcs = Get-Process -Name "vis-capture" -ErrorAction SilentlyContinue
+if ($visProcs) {
+    $visProcs | Stop-Process -Force
+    Start-Sleep -Seconds 2
+    Write-Ok "vis-capture stopped"
+}
 
-# Try the spicetify path command first
+# ── 2. Remove ALL existing Spotify installations ────────────────────────────
+Write-Step "Removing all existing Spotify installations"
+
+# Remove Microsoft Store version
 try {
-    $pathOutput = & spicetify path -c 2>$null
-    if ($pathOutput -and (Test-Path (Split-Path $pathOutput))) {
-        $spicetifyDir = Split-Path $pathOutput
+    $storeApp = Get-AppxPackage -Name "*SpotifyAB*" -ErrorAction SilentlyContinue
+    if ($storeApp) {
+        Write-Warn "Microsoft Store Spotify found — removing"
+        $storeApp | Remove-AppxPackage -ErrorAction SilentlyContinue
+        Write-Ok "Store Spotify removed"
+    }
+} catch {
+    Write-Warn "Could not check/remove Store Spotify: $_"
+}
+
+# Remove desktop version
+$spotifyAppData = "$env:APPDATA\Spotify"
+$spotifyLocalData = "$env:LOCALAPPDATA\Spotify"
+
+if (Test-Path "$spotifyAppData\Spotify.exe") {
+    Write-Warn "Desktop Spotify found — removing"
+    try {
+        Start-Process -FilePath "$spotifyAppData\Spotify.exe" -ArgumentList "/uninstall","/S" -Wait -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+    } catch {}
+}
+
+foreach ($dir in @($spotifyAppData, $spotifyLocalData)) {
+    if (Test-Path $dir) {
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        Write-Ok "Removed $dir"
+    }
+}
+
+# Try winget uninstall as a catch-all
+if (Get-Command winget -ErrorAction SilentlyContinue) {
+    try {
+        & winget uninstall --id Spotify.Spotify --silent --accept-source-agreements 2>$null
+    } catch {}
+}
+
+Write-Ok "All existing Spotify installations removed"
+
+# ── 3. Remove ALL existing spicetify ────────────────────────────────────────
+Write-Step "Removing all existing spicetify installations"
+
+# Remove ClearVisCapture scheduled task
+$taskName = "ClearVisCapture"
+try {
+    $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existingTask) {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+        Write-Ok "Removed '$taskName' scheduled task"
     }
 } catch {}
 
-# Fallback to common locations
-if (-not $spicetifyDir) {
+# Remove legacy startup shortcut
+$legacyShortcut = Join-Path ([System.IO.Path]::Combine($env:APPDATA, "Microsoft\Windows\Start Menu\Programs\Startup")) "ClearVis.lnk"
+if (Test-Path $legacyShortcut) {
+    Remove-Item $legacyShortcut -Force
+    Write-Ok "Removed legacy startup shortcut"
+}
+
+# Remove ClearVis daemon directory
+$visDir = Join-Path $env:LOCALAPPDATA "ClearVis"
+if (Test-Path $visDir) {
+    Remove-Item -Recurse -Force $visDir -ErrorAction SilentlyContinue
+    Write-Ok "Removed ClearVis directory"
+}
+
+# Try spicetify restore before nuking
+$oldSpicetify = Get-Command spicetify -ErrorAction SilentlyContinue
+if ($oldSpicetify) {
+    try { & spicetify restore 2>$null } catch {}
+}
+
+# Nuke spicetify directories
+$spicetifyDirs = @(
+    "$env:LOCALAPPDATA\spicetify",
+    "$env:APPDATA\spicetify",
+    "$env:USERPROFILE\.spicetify"
+)
+foreach ($dir in $spicetifyDirs) {
+    if (Test-Path $dir) {
+        Remove-Item -Recurse -Force $dir -ErrorAction SilentlyContinue
+        Write-Ok "Removed $dir"
+    }
+}
+
+# Clean spicetify from user PATH
+$userPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+if ($userPath) {
+    $cleanedPath = ($userPath -split ";" | Where-Object { $_ -and $_ -notmatch "spicetify" }) -join ";"
+    [System.Environment]::SetEnvironmentVariable("PATH", $cleanedPath, "User")
+}
+
+Write-Ok "All existing spicetify installations removed"
+
+# ── 4. Install locked Spotify version ────────────────────────────────────────
+Write-Step "Installing Spotify $spotifyVersion"
+
+$spotifyInstaller = Join-Path $env:TEMP "spotify_installer.exe"
+$spotifyInstalled = $false
+
+# Method 1: Download specific version from Spotify CDN
+Write-Ok "Trying Spotify CDN download..."
+try {
+    Invoke-WebRequest -Uri $spotifyInstallerUrl -OutFile $spotifyInstaller -UseBasicParsing
+    if (Test-Path $spotifyInstaller) {
+        Write-Ok "Downloaded Spotify installer"
+        $proc = Start-Process -FilePath $spotifyInstaller -PassThru
+        # Wait for the installer to finish (Spotify installers are quick)
+        $proc | Wait-Process -Timeout 120 -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 5
+        # Kill Spotify if it auto-launched
+        Get-Process -Name "Spotify" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
+            $spotifyInstalled = $true
+            Write-Ok "Spotify installed from CDN"
+        }
+    }
+} catch {
+    Write-Warn "CDN download failed: $_"
+}
+
+# Method 2: Try winget with exact version
+if (-not $spotifyInstalled -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Write-Warn "Trying winget install..."
+    try {
+        & winget install --id Spotify.Spotify --version $spotifyShortVersion --accept-source-agreements --accept-package-agreements --force --silent 2>$null
+        Start-Sleep -Seconds 5
+        # Kill Spotify if it auto-launched
+        Get-Process -Name "Spotify" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
+            $spotifyInstalled = $true
+            Write-Ok "Spotify installed via winget"
+        }
+    } catch {
+        Write-Warn "winget install failed: $_"
+    }
+}
+
+# Clean up installer
+if (Test-Path $spotifyInstaller) { Remove-Item $spotifyInstaller -Force -ErrorAction SilentlyContinue }
+
+if (-not $spotifyInstalled) {
+    Exit-WithError "Could not install Spotify $spotifyVersion automatically. Please install version $spotifyVersion manually and re-run this script."
+}
+
+# Block Spotify auto-updates
+Write-Step "Blocking Spotify auto-updates"
+
+# Remove and lock the Update directory
+$updateDir = "$env:LOCALAPPDATA\Spotify\Update"
+if (Test-Path $updateDir) {
+    Remove-Item -Recurse -Force $updateDir -ErrorAction SilentlyContinue
+}
+# Create a read-only file at the Update path to prevent directory recreation
+New-Item -ItemType File -Path $updateDir -Force -ErrorAction SilentlyContinue | Out-Null
+if (Test-Path $updateDir) {
+    Set-ItemProperty -Path $updateDir -Name IsReadOnly -Value $true -ErrorAction SilentlyContinue
+}
+
+# Remove SpotifyMigrator.exe if present
+$migrator = "$env:APPDATA\Spotify\SpotifyMigrator.exe"
+if (Test-Path $migrator) {
+    Remove-Item -Force $migrator -ErrorAction SilentlyContinue
+    # Create read-only placeholder
+    New-Item -ItemType File -Path $migrator -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $migrator -Name IsReadOnly -Value $true -ErrorAction SilentlyContinue
+}
+
+Write-Ok "Auto-updates blocked"
+
+# ── 5. Install locked spicetify version ──────────────────────────────────────
+Write-Step "Installing spicetify v$spicetifyVersion"
+
+$spicetifyDir = "$env:LOCALAPPDATA\spicetify"
+New-Item -ItemType Directory -Force -Path $spicetifyDir | Out-Null
+
+$spicetifyZip = Join-Path $env:TEMP "spicetify.zip"
+try {
+    Invoke-WebRequest -Uri $spicetifyZipUrl -OutFile $spicetifyZip -UseBasicParsing
+    Expand-Archive -Path $spicetifyZip -DestinationPath $spicetifyDir -Force
+    Remove-Item $spicetifyZip -Force
+    Write-Ok "spicetify v$spicetifyVersion extracted to $spicetifyDir"
+} catch {
+    Exit-WithError "Failed to download/extract spicetify v$spicetifyVersion from: $spicetifyZipUrl"
+}
+
+# Add to PATH for this session and permanently
+$env:PATH = "$spicetifyDir;$env:PATH"
+$userPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+if (-not $userPath) { $userPath = "" }
+if ($userPath -notmatch [Regex]::Escape($spicetifyDir)) {
+    [System.Environment]::SetEnvironmentVariable("PATH", "$spicetifyDir;$userPath", "User")
+    Write-Ok "Added spicetify to PATH"
+}
+
+# Verify
+$spicetifyCmd = Get-Command spicetify -ErrorAction SilentlyContinue
+if (-not $spicetifyCmd) {
+    Exit-WithError "spicetify not found after installation"
+}
+
+$spiceVer = & spicetify --version 2>$null
+Write-Ok "spicetify $spiceVer installed"
+
+# ── 6. Initialize spicetify ─────────────────────────────────────────────────
+Write-Step "Initializing spicetify"
+
+# Need Spotify to have been launched at least once to create prefs
+if (-not (Test-Path "$env:APPDATA\Spotify\prefs")) {
+    Write-Warn "Launching Spotify once to create config files..."
+    Start-Process "$env:APPDATA\Spotify\Spotify.exe"
+    Start-Sleep -Seconds 10
+    Get-Process -Name "Spotify" -ErrorAction SilentlyContinue | Stop-Process -Force
+    Start-Sleep -Seconds 2
+    Write-Ok "Spotify initial launch complete"
+}
+
+# Generate spicetify config
+try { & spicetify 2>$null } catch {}
+
+# Locate spicetify config directory
+$spicetifyConfigDir = $null
+try {
+    $pathOutput = & spicetify path -c 2>$null
+    if ($pathOutput -and (Test-Path (Split-Path $pathOutput))) {
+        $spicetifyConfigDir = Split-Path $pathOutput
+    }
+} catch {}
+
+if (-not $spicetifyConfigDir) {
+    # Fallback to common locations
     $candidates = @(
         "$env:APPDATA\spicetify",
         "$env:USERPROFILE\.spicetify"
     )
     foreach ($c in $candidates) {
-        if (Test-Path $c) { $spicetifyDir = $c; break }
+        if (Test-Path $c) { $spicetifyConfigDir = $c; break }
     }
 }
 
-if (-not $spicetifyDir -or -not (Test-Path $spicetifyDir)) {
-    # spicetify was just installed — run it once to generate config
+if (-not $spicetifyConfigDir -or -not (Test-Path $spicetifyConfigDir)) {
     Write-Warn "Config directory not found — initializing spicetify..."
     try { & spicetify 2>$null } catch {}
     try {
         $pathOutput = & spicetify path -c 2>$null
-        if ($pathOutput) { $spicetifyDir = Split-Path $pathOutput }
+        if ($pathOutput) { $spicetifyConfigDir = Split-Path $pathOutput }
     } catch {}
-    if (-not $spicetifyDir -or -not (Test-Path $spicetifyDir)) {
-        Write-Host "`n   Could not find spicetify config directory." -ForegroundColor Red
-        Write-Host "   Make sure Spotify Desktop is installed and has been opened at least once." -ForegroundColor Red
-        Exit-WithError
+    if (-not $spicetifyConfigDir -or -not (Test-Path $spicetifyConfigDir)) {
+        Exit-WithError "Could not find spicetify config directory."
     }
 }
-Write-Ok "Config directory: $spicetifyDir"
+Write-Ok "Config directory: $spicetifyConfigDir"
 
-$themesDir = Join-Path $spicetifyDir "Themes"
+$themesDir = Join-Path $spicetifyConfigDir "Themes"
 $clearDir  = Join-Path $themesDir $themeName
 
-# ── 4. Detect and fully remove previous installation ────────────────────────
-Write-Step "Checking for existing Clear installation"
-
-# Check if Clear was previously applied
-$previousTheme = ""
-try { $previousTheme = & spicetify config current_theme 2>$null } catch {}
-
-$clearExists = (Test-Path $clearDir) -or ($previousTheme -match $themeName)
-if ($clearExists) {
-    Write-Warn "Existing Clear installation detected — removing completely"
-
-    # Restore Spotify to vanilla (undoes any previous spicetify apply)
-    try {
-        & spicetify restore
-        Write-Ok "Restored Spotify to vanilla state"
-    } catch {
-        Write-Warn "spicetify restore returned non-zero (may already be vanilla)"
-    }
-
-    # Nuke the entire theme directory
-    if (Test-Path $clearDir) {
-        Remove-Item -Recurse -Force $clearDir
-        Write-Ok "Removed $clearDir"
-    }
-
-    # Reset spicetify config to defaults
-    try { & spicetify config current_theme "" } catch {}
-    try { & spicetify config inject_theme_js 0 } catch {}
-    try { & spicetify config color_scheme "" } catch {}
-    try { & spicetify config extensions "" } catch {}
-    Write-Ok "Reset spicetify configuration"
-} else {
-    Write-Ok "No previous $themeName installation found"
-}
-
-# Make sure config exists
-$configIni = Join-Path $spicetifyDir "config-xpui.ini"
-if (-not (Test-Path $configIni)) {
-    Write-Warn "No config-xpui.ini found — running spicetify to generate it"
-    try { & spicetify 2>$null } catch {}
-}
-
-# ── 5. Download theme files ─────────────────────────────────────────────────
+# ── 7. Download theme files ─────────────────────────────────────────────────
 Write-Step "Downloading $themeName theme files"
 New-Item -ItemType Directory -Force -Path $clearDir | Out-Null
 
@@ -189,22 +343,19 @@ foreach ($file in $themeFiles) {
     }
 }
 
-# ── 6. Configure spicetify ──────────────────────────────────────────────────
+# ── 8. Configure spicetify ──────────────────────────────────────────────────
 Write-Step "Configuring spicetify"
 
-# Set Clear as the active theme
 & spicetify config current_theme $themeName
 Write-Ok "Theme set to $themeName"
 
-# Enable theme JS injection
 & spicetify config inject_theme_js 1
 Write-Ok "Theme JS injection enabled"
 
-# Clear any leftover custom color scheme (use default from color.ini)
 & spicetify config color_scheme ""
 Write-Ok "Color scheme reset to default"
 
-# ── 7. Apply ────────────────────────────────────────────────────────────────
+# ── 9. Apply ────────────────────────────────────────────────────────────────
 Write-Step "Applying theme"
 try {
     & spicetify backup apply
@@ -221,7 +372,7 @@ try {
     }
 }
 
-# ── 8. Build and install audio visualizer daemon ─────────────────────────────
+# ── 10. Build and install audio visualizer daemon ─────────────────────────────
 Write-Step "Setting up audio visualizer daemon"
 
 # Permanent install location (survives theme folder wipes)
@@ -244,11 +395,8 @@ $oldProcs = Get-Process -Name "vis-capture" -ErrorAction SilentlyContinue
 if ($oldProcs) {
     $oldProcs | Stop-Process -Force
     Start-Sleep -Seconds 2
-    # Verify process actually exited
     $still = Get-Process -Name "vis-capture" -ErrorAction SilentlyContinue
-    if ($still) {
-        Start-Sleep -Seconds 3
-    }
+    if ($still) { Start-Sleep -Seconds 3 }
     Write-Ok "Stopped existing vis-capture"
 }
 
@@ -453,28 +601,13 @@ if ($nativeOk) {
 # Clean up build dir
 if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 
-# ── 9. Launch Spotify ────────────────────────────────────────────────────────
+# ── 11. Launch Spotify ───────────────────────────────────────────────────────
 Write-Step "Launching Spotify"
-$spotifyExe = $null
 
-# Check common install locations
-$candidates = @(
-    "$env:APPDATA\Spotify\Spotify.exe",
-    "$env:LOCALAPPDATA\Microsoft\WindowsApps\Spotify.exe",
-    "${env:ProgramFiles}\WindowsApps\SpotifyAB.SpotifyMusic_*\Spotify.exe",
-    "${env:ProgramFiles(x86)}\Spotify\Spotify.exe"
-)
-
-foreach ($c in $candidates) {
-    $resolved = Resolve-Path $c -ErrorAction SilentlyContinue
-    if ($resolved) { $spotifyExe = $resolved.Path; break }
-}
-
-if ($spotifyExe) {
-    Start-Process $spotifyExe
+if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
+    Start-Process "$env:APPDATA\Spotify\Spotify.exe"
     Write-Ok "Spotify launched"
 } else {
-    # Try Start-Process with just the name (relies on PATH or shell association)
     try {
         Start-Process "spotify"
         Write-Ok "Spotify launched"
@@ -484,5 +617,7 @@ if ($spotifyExe) {
 }
 
 Write-Host "`n   Clear installed successfully!" -ForegroundColor Green
+Write-Host "   Spotify $spotifyVersion (version-locked)" -ForegroundColor White
+Write-Host "   Spicetify v$spicetifyVersion (version-locked)" -ForegroundColor White
 Write-Host "   Enjoy your clean Spotify experience." -ForegroundColor White
 Write-Host ""

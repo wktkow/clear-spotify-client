@@ -121,7 +121,31 @@ if ($spicetifyCmd) {
     Write-Warn "spicetify not found — skipping restore (Spotify may need reinstall)"
 }
 
-# ── 5. Remove Clear theme files ─────────────────────────────────────────────
+# ── 5. Undo Spotify auto-update blocking ─────────────────────────────────
+Write-Step "Restoring Spotify auto-updates"
+
+# Remove the read-only Update blocker file (our installer creates this)
+$updateBlocker = "$env:LOCALAPPDATA\Spotify\Update"
+if ((Test-Path $updateBlocker) -and -not (Test-Path $updateBlocker -PathType Container)) {
+    Set-ItemProperty -Path $updateBlocker -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+    Remove-Item $updateBlocker -Force -ErrorAction SilentlyContinue
+    Write-Ok "Removed Update blocker file"
+}
+
+# Remove the read-only SpotifyMigrator.exe placeholder
+$migrator = "$env:APPDATA\Spotify\SpotifyMigrator.exe"
+if (Test-Path $migrator) {
+    $migratorSize = (Get-Item $migrator -ErrorAction SilentlyContinue).Length
+    if ($migratorSize -eq 0) {
+        Set-ItemProperty -Path $migrator -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
+        Remove-Item $migrator -Force -ErrorAction SilentlyContinue
+        Write-Ok "Removed SpotifyMigrator.exe placeholder"
+    }
+}
+
+Write-Ok "Spotify auto-updates restored"
+
+# ── 6. Remove Clear theme files ─────────────────────────────────────────
 Write-Step "Removing Clear theme files"
 
 $spicetifyDir = $null
@@ -178,7 +202,7 @@ if ($spicetifyDir) {
     }
 }
 
-# ── 6. Remove vis-capture daemon files ───────────────────────────────────────
+# ── 7. Remove vis-capture daemon files ───────────────────────────────────
 Write-Step "Removing audio visualizer daemon files"
 
 # Primary install location
@@ -201,7 +225,7 @@ if (Test-Path $buildDir) {
     Write-Ok "Removed leftover build directory"
 }
 
-# ── 7. Launch clean Spotify ──────────────────────────────────────────────────
+# ── 8. Launch clean Spotify ──────────────────────────────────────────────
 Write-Step "Launching Spotify"
 
 $spotifyExe = $null

@@ -18,9 +18,12 @@ Opinionated Spotify client reducing screen clutter and improving readability.
 
 ## Installation
 
+> **Version-locked:** Clear pins Spotify to `1.2.74.477.g3be53afe` and Spicetify to `v2.42.11`.
+> The installers will remove any existing Spotify/Spicetify and install these exact versions.
+
 ### On Windows:
 
-0. Make sure you have Spotify installed and you are logged in.
+0. The installer will handle everything — it removes any existing Spotify (Desktop or Store) and Spicetify, then installs the locked versions.
 
 1. Open PowerShell and paste:
 
@@ -32,7 +35,11 @@ iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/pow
 
 2. Enjoy!
 
-### On Linux:
+### On Linux (Flatpak only):
+
+> **Flatpak is required** — no other Spotify installation method is supported.
+> The installer removes any existing Spotify (Snap, native deb, or Flatpak) and Spicetify,
+> then installs the locked versions via Flatpak.
 
 [click here](/docs/linux-install.md)
 

@@ -1,11 +1,18 @@
 #!/bin/bash
-# Clear Spotify Client — Linux installer
-# All-in-one: detects existing installation, fully removes it, installs fresh.
-# Kills Spotify, restores vanilla state, downloads theme files, applies,
-# builds the audio visualizer daemon (vis-capture), and launches Spotify.
-# Requires: spicetify, curl, g++, libpulse-dev (for visualizer)
+# Clear Spotify Client — Linux installer (version-locked)
+# Enforces Flatpak Spotify and pinned versions of both Spotify and Spicetify.
+# Removes any existing Spotify/Spicetify installation, installs locked versions,
+# downloads theme files, applies, builds the audio visualizer daemon, launches Spotify.
+# Requires: flatpak, curl, g++ and libpulse-dev (optional, for visualizer)
 
 set -euo pipefail
+
+# ── LOCKED VERSIONS — DO NOT CHANGE ─────────────────────────────────────────
+SPICETIFY_VERSION="2.42.11"
+SPOTIFY_VERSION="1.2.74.477.g3be53afe"
+SPOTIFY_FLATPAK_COMMIT="d0881734d9f85a709418c4e671116b0c87baf24eebfa2a47a473d11fefe8f223"
+SPICETIFY_TAR_URL="https://github.com/spicetify/cli/releases/download/v${SPICETIFY_VERSION}/spicetify-${SPICETIFY_VERSION}-linux-amd64.tar.gz"
+# ─────────────────────────────────────────────────────────────────────────────
 
 REPO="wktkow/clear-spotify-client"
 BRANCH="main"
@@ -13,153 +20,224 @@ BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
 THEME_FILES=("user.css" "color.ini" "theme.js")
 NATIVE_FILES=("native/common/protocol.h" "native/common/fft.h" "native/common/ws_server.h" "native/linux/main.cpp" "native/linux/Makefile" "native/linux/clear-vis.service")
 THEME_NAME="Clear"
-DEFAULT_DIR="$HOME/.config/spicetify/Themes/$THEME_NAME"
 
 cyan()   { printf '\033[1;36m>> %s\033[0m\n' "$*"; }
 green()  { printf '\033[0;32m   %s\033[0m\n' "$*"; }
 yellow() { printf '\033[0;33m   %s\033[0m\n' "$*"; }
 red()    { printf '\033[0;31m   %s\033[0m\n' "$*"; }
 
-# ── 1. Check spicetify is installed ─────────────────────────────────────────
-cyan "Checking spicetify installation"
-if ! command -v spicetify &>/dev/null; then
-    red "spicetify is not installed or not in PATH."
-    red "Install it first: https://spicetify.app"
-    yellow "Run: curl -fsSL https://raw.githubusercontent.com/spicetify/cli/main/install.sh | sh"
+# ── 1. Enforce Flatpak ─────────────────────────────────────────────────────
+cyan "Checking Flatpak availability"
+if ! command -v flatpak &>/dev/null; then
+    red "Flatpak is NOT installed."
+    red "Clear on Linux REQUIRES Flatpak — no other installation method is supported."
+    red "Install Flatpak first: https://flatpak.org/setup/"
     exit 1
 fi
-green "spicetify found at $(command -v spicetify)"
+green "Flatpak found at $(command -v flatpak)"
+
+# Ensure flathub remote exists
+if ! flatpak remotes --user 2>/dev/null | grep -q flathub && \
+   ! flatpak remotes --system 2>/dev/null | grep -q flathub; then
+    yellow "Flathub remote not found — adding it"
+    flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    green "Flathub remote added"
+fi
 
 # ── 2. Kill Spotify ─────────────────────────────────────────────────────────
 cyan "Stopping Spotify"
+if pgrep -f "com.spotify.Client" &>/dev/null; then
+    pkill -f "com.spotify.Client" 2>/dev/null || true
+    sleep 2
+    green "Flatpak Spotify stopped"
+fi
 if pgrep -x spotify &>/dev/null; then
     pkill -x spotify 2>/dev/null || true
     sleep 2
-    green "Spotify stopped"
+    green "Native Spotify stopped"
+fi
+green "Spotify is not running"
+
+# ── 3. Remove ALL existing Spotify installations ────────────────────────────
+cyan "Removing all existing Spotify installations"
+
+# Remove snap Spotify
+if command -v snap &>/dev/null && snap list 2>/dev/null | grep -q spotify; then
+    yellow "Snap Spotify found — removing (Clear requires Flatpak only)"
+    sudo snap remove spotify 2>/dev/null || yellow "Could not remove Snap Spotify (may need sudo)"
+fi
+
+# Remove native apt/deb Spotify
+if dpkg -l spotify-client 2>/dev/null | grep -q "^ii"; then
+    yellow "Native deb Spotify found — removing (Clear requires Flatpak only)"
+    sudo apt remove --purge -y spotify-client 2>/dev/null || yellow "Could not remove native Spotify (may need sudo)"
+fi
+
+# Remove any Flatpak Spotify (user install — will reinstall locked version)
+if flatpak list --user 2>/dev/null | grep -q com.spotify.Client; then
+    # Unmask first in case it was masked from a previous run
+    flatpak mask --user --remove com.spotify.Client 2>/dev/null || true
+    yellow "User Flatpak Spotify found — removing for clean install"
+    flatpak uninstall --user -y --noninteractive com.spotify.Client 2>/dev/null || true
+    green "User Flatpak Spotify removed"
+fi
+
+# Remove system-wide Flatpak Spotify
+if flatpak list --system 2>/dev/null | grep -q com.spotify.Client; then
+    yellow "System Flatpak Spotify found — removing"
+    sudo flatpak uninstall --system -y --noninteractive com.spotify.Client 2>/dev/null || yellow "Could not remove system Flatpak Spotify (may need sudo)"
+fi
+
+green "All existing Spotify installations removed"
+
+# ── 4. Remove ALL existing spicetify ────────────────────────────────────────
+cyan "Removing all existing spicetify installations"
+
+# Stop visualizer daemon first
+systemctl --user stop clear-vis.service 2>/dev/null || true
+systemctl --user disable clear-vis.service 2>/dev/null || true
+pkill -f vis-capture 2>/dev/null || true
+
+# If spicetify is currently installed, try to restore Spotify first
+if command -v spicetify &>/dev/null; then
+    spicetify restore 2>/dev/null || true
+fi
+
+# Nuke spicetify directories
+rm -rf "$HOME/.spicetify" 2>/dev/null || true
+rm -rf "$HOME/.config/spicetify" 2>/dev/null || true
+rm -f "$HOME/.local/bin/spicetify" 2>/dev/null || true
+
+# Remove from system paths
+for p in /usr/local/bin/spicetify /usr/bin/spicetify; do
+    if [[ -f "$p" ]]; then
+        sudo rm -f "$p" 2>/dev/null || true
+    fi
+done
+
+green "All existing spicetify installations removed"
+
+# ── 5. Install locked Spotify via Flatpak ───────────────────────────────────
+cyan "Installing Spotify $SPOTIFY_VERSION via Flatpak"
+
+flatpak install --user -y --noninteractive flathub com.spotify.Client
+green "Spotify Flatpak base installed"
+
+# Pin to the exact version commit
+yellow "Pinning to version $SPOTIFY_VERSION (commit ${SPOTIFY_FLATPAK_COMMIT:0:12}...)"
+if flatpak update --user -y --noninteractive --commit="$SPOTIFY_FLATPAK_COMMIT" com.spotify.Client; then
+    green "Spotify pinned to version $SPOTIFY_VERSION"
 else
-    green "Spotify was not running"
-fi
-
-# Also kill flatpak Spotify if present
-if pgrep -f "com.spotify.Client" &>/dev/null; then
-    pkill -f "com.spotify.Client" 2>/dev/null || true
-    sleep 1
-    green "Flatpak Spotify stopped"
-fi
-
-# ── 3. Determine install directory ──────────────────────────────────────────
-cyan "Determining install directory"
-
-# Try spicetify's own config path first
-SPICETIFY_DIR=""
-if SPICE_CONFIG=$(spicetify path -c 2>/dev/null); then
-    SPICETIFY_DIR="$(dirname "$SPICE_CONFIG")"
-fi
-
-# Fallback to common locations
-if [[ -z "$SPICETIFY_DIR" ]]; then
-    for candidate in "$HOME/.config/spicetify" "$HOME/.spicetify"; do
-        if [[ -d "$candidate" ]]; then
-            SPICETIFY_DIR="$candidate"
-            break
-        fi
-    done
-fi
-
-if [[ -n "$SPICETIFY_DIR" ]]; then
-    INSTALL_DIR="$SPICETIFY_DIR/Themes/$THEME_NAME"
-else
-    INSTALL_DIR="$DEFAULT_DIR"
-fi
-
-green "Default install directory: $INSTALL_DIR"
-
-if [[ ! -d "$(dirname "$INSTALL_DIR")" ]]; then
-    yellow "Themes directory does not exist yet: $(dirname "$INSTALL_DIR")"
-    read -rp "   Create it? (y/n/custom path): " choice
-    case "$choice" in
-        y|Y|yes|YES)
-            mkdir -p "$INSTALL_DIR"
-            green "Created $INSTALL_DIR"
-            ;;
-        n|N|no|NO)
-            red "Cannot continue without a valid directory."
-            exit 1
-            ;;
-        *)
-            # User entered a custom path
-            CUSTOM_DIR="$choice"
-            # Expand ~ if present
-            CUSTOM_DIR="${CUSTOM_DIR/#\~/$HOME}"
-            if [[ ! -d "$CUSTOM_DIR" ]]; then
-                yellow "Directory '$CUSTOM_DIR' does not exist."
-                read -rp "   Create it? (y/n): " confirm
-                if [[ "$confirm" =~ ^[Yy] ]]; then
-                    mkdir -p "$CUSTOM_DIR"
-                    green "Created $CUSTOM_DIR"
-                else
-                    red "Cannot continue without a valid directory."
-                    exit 1
-                fi
-            fi
-            INSTALL_DIR="$CUSTOM_DIR"
-            green "Using custom directory: $INSTALL_DIR"
-            ;;
-    esac
-else
-    mkdir -p "$INSTALL_DIR"
-fi
-
-# Verify the directory exists now
-if [[ ! -d "$INSTALL_DIR" ]]; then
-    red "Install directory does not exist: $INSTALL_DIR"
+    red "Failed to pin Spotify to commit $SPOTIFY_FLATPAK_COMMIT"
+    red "The required version may no longer be available on Flathub."
     exit 1
 fi
 
-# ── 4. Detect and fully remove previous installation ────────────────────────
-cyan "Checking for existing Clear installation"
+# Block future updates
+flatpak mask --user com.spotify.Client 2>/dev/null || true
+green "Spotify auto-updates blocked (flatpak mask)"
 
-# Check if Clear was previously applied
-PREVIOUS_THEME=$(spicetify config current_theme 2>/dev/null || true)
-if [[ "$PREVIOUS_THEME" == *"$THEME_NAME"* ]] || [[ -d "$INSTALL_DIR" ]]; then
-    yellow "Existing Clear installation detected — removing completely"
-
-    # Restore Spotify to vanilla (undoes any previous spicetify apply)
-    if spicetify restore 2>/dev/null; then
-        green "Restored Spotify to vanilla state"
-    else
-        yellow "spicetify restore returned non-zero (may already be vanilla)"
-    fi
-
-    # Nuke the entire theme directory
-    if [[ -d "$INSTALL_DIR" ]]; then
-        rm -rf "${INSTALL_DIR:?}"
-        green "Removed $INSTALL_DIR"
-    fi
-
-    # Reset spicetify config to defaults
-    spicetify config current_theme "" 2>/dev/null || true
-    spicetify config inject_theme_js 0 2>/dev/null || true
-    spicetify config color_scheme "" 2>/dev/null || true
-    spicetify config extensions "" 2>/dev/null || true
-    green "Reset spicetify configuration"
+# Verify installed version
+INSTALLED_VER=$(flatpak info --user com.spotify.Client 2>/dev/null | grep "Version:" | awk '{print $2}' || true)
+if [[ "$INSTALLED_VER" == "$SPOTIFY_VERSION" ]]; then
+    green "Verified: Spotify $INSTALLED_VER"
 else
-    green "No previous $THEME_NAME installation found"
+    red "Version mismatch! Expected $SPOTIFY_VERSION but got '$INSTALLED_VER'"
+    exit 1
 fi
 
-# Make sure config file exists
-if [[ -n "$SPICETIFY_DIR" ]]; then
-    CONFIG_INI="$SPICETIFY_DIR/config-xpui.ini"
-    if [[ ! -f "$CONFIG_INI" ]]; then
-        yellow "No config-xpui.ini found — running spicetify to generate it"
-        spicetify &>/dev/null || true
+# ── 6. Install locked spicetify ─────────────────────────────────────────────
+cyan "Installing spicetify v$SPICETIFY_VERSION"
+
+SPICETIFY_DIR="$HOME/.spicetify"
+mkdir -p "$SPICETIFY_DIR"
+
+TEMP_TAR=$(mktemp --suffix=.tar.gz)
+if curl -fsSL "$SPICETIFY_TAR_URL" -o "$TEMP_TAR"; then
+    tar -xzf "$TEMP_TAR" -C "$SPICETIFY_DIR"
+    rm -f "$TEMP_TAR"
+    chmod +x "$SPICETIFY_DIR/spicetify"
+    green "spicetify v$SPICETIFY_VERSION extracted to $SPICETIFY_DIR"
+else
+    red "Failed to download spicetify v$SPICETIFY_VERSION from:"
+    red "$SPICETIFY_TAR_URL"
+    rm -f "$TEMP_TAR"
+    exit 1
+fi
+
+# Make spicetify available in PATH
+mkdir -p "$HOME/.local/bin"
+ln -sf "$SPICETIFY_DIR/spicetify" "$HOME/.local/bin/spicetify"
+export PATH="$HOME/.spicetify:$HOME/.local/bin:$PATH"
+
+if ! command -v spicetify &>/dev/null; then
+    red "spicetify not found in PATH after installation"
+    red "Ensure \$HOME/.local/bin or \$HOME/.spicetify is in your PATH"
+    exit 1
+fi
+
+SPICE_VER=$(spicetify --version 2>/dev/null || true)
+green "spicetify $SPICE_VER installed"
+
+# ── 7. Initialize spicetify for Flatpak Spotify ─────────────────────────────
+cyan "Initializing spicetify"
+
+# Spotify needs to run at least once so it creates its config directories
+SPOTIFY_DATA="$HOME/.var/app/com.spotify.Client/config/spotify"
+if [[ ! -d "$SPOTIFY_DATA" ]]; then
+    yellow "Launching Spotify once to create config directories..."
+    flatpak run com.spotify.Client &>/dev/null &
+    SPOTIFY_PID=$!
+    sleep 10
+    kill "$SPOTIFY_PID" 2>/dev/null || true
+    pkill -f "com.spotify.Client" 2>/dev/null || true
+    sleep 2
+    green "Spotify initial launch complete"
+fi
+
+# Generate spicetify config
+spicetify 2>/dev/null || true
+
+# Set paths explicitly for Flatpak Spotify
+SPOTIFY_APP_PATH="$HOME/.local/share/flatpak/app/com.spotify.Client/current/active/files/extra/share/spotify"
+SPOTIFY_PREFS_PATH="$HOME/.var/app/com.spotify.Client/config/spotify/prefs"
+
+if [[ -d "$SPOTIFY_APP_PATH" ]]; then
+    spicetify config spotify_path "$SPOTIFY_APP_PATH"
+    green "Spotify path set (user flatpak)"
+else
+    # Try system flatpak path
+    SYS_SPOTIFY_PATH="/var/lib/flatpak/app/com.spotify.Client/current/active/files/extra/share/spotify"
+    if [[ -d "$SYS_SPOTIFY_PATH" ]]; then
+        spicetify config spotify_path "$SYS_SPOTIFY_PATH"
+        green "Spotify path set (system flatpak)"
+    else
+        yellow "Could not find Spotify app path — relying on spicetify auto-detection"
     fi
 fi
 
-# ── 5. Download theme files ─────────────────────────────────────────────────
-cyan "Downloading $THEME_NAME theme files"
-mkdir -p "$INSTALL_DIR"
+if [[ -f "$SPOTIFY_PREFS_PATH" ]]; then
+    spicetify config prefs_path "$SPOTIFY_PREFS_PATH"
+    green "Prefs path set"
+fi
 
+# ── 8. Download theme files ─────────────────────────────────────────────────
+cyan "Setting up theme directory"
+
+SPICETIFY_CONFIG_DIR=""
+if SPICE_CONFIG=$(spicetify path -c 2>/dev/null); then
+    SPICETIFY_CONFIG_DIR="$(dirname "$SPICE_CONFIG")"
+fi
+
+if [[ -z "$SPICETIFY_CONFIG_DIR" ]]; then
+    SPICETIFY_CONFIG_DIR="$HOME/.config/spicetify"
+fi
+
+INSTALL_DIR="$SPICETIFY_CONFIG_DIR/Themes/$THEME_NAME"
+mkdir -p "$INSTALL_DIR"
+green "Theme directory: $INSTALL_DIR"
+
+cyan "Downloading $THEME_NAME theme files"
 for file in "${THEME_FILES[@]}"; do
     url="$BASE_URL/$file"
     dest="$INSTALL_DIR/$file"
@@ -171,7 +249,7 @@ for file in "${THEME_FILES[@]}"; do
     fi
 done
 
-# ── 6. Configure spicetify ──────────────────────────────────────────────────
+# ── 9. Configure and apply ──────────────────────────────────────────────────
 cyan "Configuring spicetify"
 
 spicetify config current_theme "$THEME_NAME"
@@ -183,9 +261,7 @@ green "Theme JS injection enabled"
 spicetify config color_scheme ""
 green "Color scheme reset to default"
 
-# ── 7. Apply ────────────────────────────────────────────────────────────────
 cyan "Applying theme"
-
 if spicetify backup apply 2>/dev/null; then
     green "Theme applied successfully"
 else
@@ -199,10 +275,9 @@ else
     fi
 fi
 
-# ── 8. Build and install audio visualizer daemon ─────────────────────────────
+# ── 10. Build and install audio visualizer daemon ────────────────────────────
 cyan "Setting up audio visualizer daemon"
 
-# Check for g++ and libpulse
 if ! command -v g++ &>/dev/null; then
     yellow "g++ not found — skipping visualizer daemon build"
     yellow "Install with: sudo apt install g++  (or equivalent)"
@@ -262,23 +337,14 @@ else
     rm -rf "$BUILD_DIR"
 fi
 
-# ── 9. Launch Spotify ────────────────────────────────────────────────────────
+# ── 11. Launch Spotify ──────────────────────────────────────────────────────
 cyan "Launching Spotify"
-
-if command -v flatpak &>/dev/null && flatpak list 2>/dev/null | grep -q com.spotify.Client; then
-    flatpak run com.spotify.Client &>/dev/null &
-    green "Spotify launched (flatpak)"
-elif command -v spotify &>/dev/null; then
-    spotify &>/dev/null &
-    green "Spotify launched"
-elif command -v snap &>/dev/null && snap list 2>/dev/null | grep -q spotify; then
-    snap run spotify &>/dev/null &
-    green "Spotify launched (snap)"
-else
-    yellow "Could not auto-launch Spotify — please start it manually"
-fi
+flatpak run com.spotify.Client &>/dev/null &
+green "Spotify launched (Flatpak)"
 
 echo ""
 green "Clear installed successfully!"
+green "Spotify  $SPOTIFY_VERSION (Flatpak, version-locked)"
+green "Spicetify v$SPICETIFY_VERSION (version-locked)"
 green "Enjoy your clean Spotify experience."
 echo ""

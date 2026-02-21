@@ -1,13 +1,19 @@
-0. Important: make sure you have spotify installed already and you are logged in.
+## Linux Installation (Flatpak only)
 
-1. Make sure you have [spicetify](https://spicetify.app/) installed.
+> **Flatpak is required.** No other Spotify installation method (Snap, native deb) is supported.
+>
+> The installer removes any existing Spotify and Spicetify installations, then installs:
+> - **Spotify** `1.2.74.477.g3be53afe` (Flatpak, pinned and masked against auto-updates)
+> - **Spicetify** `v2.42.11` (from GitHub releases)
 
-2. Run the installer:
+0. Make sure [Flatpak](https://flatpak.org/setup/) is installed on your system.
+
+1. Run the installer:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/sh/install.sh | bash
    ```
 
-   (Detects existing install, fully removes it, downloads fresh theme files, applies, and launches Spotify)
+   (Removes all existing Spotify/Spicetify, installs locked versions, downloads theme, applies, and launches Spotify)
 
-3. Enjoy!
+2. Enjoy!
