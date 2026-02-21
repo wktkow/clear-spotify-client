@@ -1200,9 +1200,17 @@
       };
 
       ws.onclose = () => {
+        const wasConnected = wsConnected;
         wsConnected = false;
         if (active) {
-          showMessage("Audio bridge disconnected", "Reconnecting...");
+          if (wasConnected) {
+            showMessage("Audio bridge disconnected", "Reconnecting...");
+          } else {
+            showMessage(
+              "Audio bridge not running",
+              "Start vis-capture to enable the visualizer.",
+            );
+          }
           reconnectTimer = setTimeout(connectWs, WS_RECONNECT_MS);
         }
       };
