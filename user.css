@@ -2190,6 +2190,74 @@ body.clear-hide-marketplace .clear-kebab-item-marketplace {
   background-color: #ccaa00;
 }
 
+/* --- One-time notice popup --- */
+.clear-notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.15s ease,
+    visibility 0.15s;
+}
+
+.clear-notice-overlay--open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.clear-notice-modal {
+  width: 20rem;
+  background-color: var(--spice-main);
+  border: var(--default-border);
+  border-radius: var(--border-radius-md);
+  padding: 1.5rem;
+  text-align: center;
+  transform: translateY(8px) scale(0.97);
+  transition: transform 0.15s ease;
+}
+
+.clear-notice-overlay--open .clear-notice-modal {
+  transform: translateY(0) scale(1);
+}
+
+.clear-notice-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--spice-text);
+  margin-bottom: 0.75rem;
+}
+
+.clear-notice-message {
+  font-size: 0.8125rem;
+  color: var(--spice-subtext);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+
+.clear-notice-btn {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  background-color: var(--spice-button-hover);
+  color: var(--spice-text);
+  transition:
+    background-color 0.1s ease,
+    color 0.1s ease;
+}
+
+.clear-notice-btn:hover {
+  background-color: rgba(var(--spice-rgb-text), 0.15);
+}
+
 /* Shrink global nav bar to fit its content */
 .Root__globalNav {
   width: fit-content !important;
@@ -2235,7 +2303,7 @@ body.clear-hide-marketplace .clear-kebab-item-marketplace {
   position: absolute;
   inset: 0;
   z-index: 9998;
-  background: rgba(var(--spice-rgb-main), 0.95);
+  background: rgb(var(--spice-rgb-main));
   border-radius: var(--border-radius-md);
   display: flex;
   align-items: center;
@@ -2281,7 +2349,7 @@ body.clear-hide-marketplace .clear-kebab-item-marketplace {
 
 #clear-visualizer-bars {\n  position: absolute;\n  inset: 0;\n}
 
-.clear-visualizer-close {
+.clear-visualizer-fullscreen {
   position: absolute;
   top: 1rem;
   right: 1rem;
@@ -2301,7 +2369,7 @@ body.clear-hide-marketplace .clear-kebab-item-marketplace {
   z-index: 1;
 }
 
-.clear-visualizer-close:hover {
+.clear-visualizer-fullscreen:hover {
   color: var(--spice-text);
   background-color: var(--spice-button-hover);
 }

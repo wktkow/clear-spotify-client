@@ -180,7 +180,7 @@
       settings.hideMarketplace !== false,
     );
     // Font choice: "default" | "inter" | "geist"
-    const font = settings.fontChoice || "default";
+    const font = settings.fontChoice || "geist";
     document.body.classList.toggle("clear-font-inter", font === "inter");
     document.body.classList.toggle("clear-font-geist", font === "geist");
     // Load the chosen font from Google Fonts
@@ -220,6 +220,8 @@
     if (btn) btn.click();
   }
 
+  let visFullscreen = false;
+
   function initAutoNowPlaying() {
     // Close now playing view on app startup
     function tryCloseOnStartup(attempts) {
@@ -235,6 +237,7 @@
     onSongChange(() => {
       const settings = loadSettings();
       if (settings.autoNowPlaying === false) return;
+      if (visFullscreen) return;
       setTimeout(() => {
         if (!isNowPlayingOpen()) {
           clickNowPlayingButton();
@@ -246,6 +249,7 @@
     onPlayPauseChange(() => {
       const settings = loadSettings();
       if (settings.autoNowPlaying === false) return;
+      if (visFullscreen) return;
       setTimeout(() => {
         if (isPlaying()) {
           if (!isNowPlayingOpen()) {
@@ -268,6 +272,37 @@
   }
   updatePausedState();
   onPlayPauseChange(updatePausedState);
+
+  // --- One-time notice popup (persists until user clicks Okay) ---
+  function showNotice(settingsKey, titleText, messageHTML) {
+    const s = loadSettings();
+    if (s[settingsKey]) return; // already dismissed
+    const overlay = document.createElement("div");
+    overlay.className = "clear-notice-overlay clear-notice-overlay--open";
+    const modal = document.createElement("div");
+    modal.className = "clear-notice-modal";
+    const title = document.createElement("div");
+    title.className = "clear-notice-title";
+    title.textContent = titleText;
+    modal.appendChild(title);
+    const msg = document.createElement("div");
+    msg.className = "clear-notice-message";
+    msg.innerHTML = messageHTML;
+    modal.appendChild(msg);
+    const okBtn = document.createElement("button");
+    okBtn.className = "clear-notice-btn";
+    okBtn.textContent = "Okay";
+    okBtn.addEventListener("click", () => {
+      const cur = loadSettings();
+      cur[settingsKey] = true;
+      saveSettings(cur);
+      overlay.classList.remove("clear-notice-overlay--open");
+      setTimeout(() => overlay.remove(), 150);
+    });
+    modal.appendChild(okBtn);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
 
   function showMarketplaceWarning(onConfirm) {
     const overlay = document.createElement("div");
@@ -469,7 +504,7 @@
         const opt = document.createElement("option");
         opt.value = o.v;
         opt.textContent = o.l;
-        if ((settings.fontChoice || "default") === o.v) opt.selected = true;
+        if ((settings.fontChoice || "geist") === o.v) opt.selected = true;
         select.appendChild(opt);
       });
       select.addEventListener("change", () => {
@@ -1288,9 +1323,27 @@
       overlay.appendChild(msgEl);
 
       const closeBtn = document.createElement("button");
-      closeBtn.className = "clear-visualizer-close";
-      closeBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3.293 3.293a1 1 0 0 1 1.414 0L12 10.586l7.293-7.293a1 1 0 1 1 1.414 1.414L13.414 12l7.293 7.293a1 1 0 0 1-1.414 1.414L12 13.414l-7.293 7.293a1 1 0 0 1-1.414-1.414L10.586 12 3.293 4.707a1 1 0 0 1 0-1.414"/></svg>`;
-      closeBtn.addEventListener("click", toggle);
+      closeBtn.className = "clear-visualizer-fullscreen";
+      const fsEnterSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+      const fsExitSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>`;
+      closeBtn.innerHTML = fsEnterSvg;
+      closeBtn.addEventListener("click", () => {
+        visFullscreen = !visFullscreen;
+        closeBtn.innerHTML = visFullscreen ? fsExitSvg : fsEnterSvg;
+        document.body.classList.toggle("clear-vis-fullscreen", visFullscreen);
+        if (visFullscreen) {
+          if (isNowPlayingOpen()) clickNowPlayingButton();
+        } else {
+          const s = loadSettings();
+          if (
+            s.autoNowPlaying !== false &&
+            isPlaying() &&
+            !isNowPlayingOpen()
+          ) {
+            clickNowPlayingButton();
+          }
+        }
+      });
       overlay.appendChild(closeBtn);
 
       if (getComputedStyle(mainView).position === "static") {
@@ -1318,10 +1371,34 @@
         if (btn) btn.classList.add("clear-visualizer-btn--active");
         wsData.fill(0);
         connectWs();
+        showNotice(
+          "noticedVisFullscreen",
+          "Tip",
+          "Click the button in the top-right corner of the visualizer to enter fullscreen mode.",
+        );
       } else {
         if (overlay) overlay.classList.remove("clear-visualizer-overlay--open");
         disconnectWs();
         if (btn) btn.classList.remove("clear-visualizer-btn--active");
+        // Exit fullscreen if active when visualizer closes
+        if (visFullscreen) {
+          visFullscreen = false;
+          document.body.classList.remove("clear-vis-fullscreen");
+          const fsBtn = overlay
+            ? overlay.querySelector(".clear-visualizer-fullscreen")
+            : null;
+          if (fsBtn) {
+            fsBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+          }
+          const s = loadSettings();
+          if (
+            s.autoNowPlaying !== false &&
+            isPlaying() &&
+            !isNowPlayingOpen()
+          ) {
+            clickNowPlayingButton();
+          }
+        }
       }
     }
 
@@ -1471,4 +1548,11 @@
     // Now fade out the black background over 1s
     document.body.classList.add("clear-bg-out");
   }
+
+  // --- First-launch nav hover notice ---
+  showNotice(
+    "noticedNavHover",
+    "Welcome to Clear",
+    "Hover over the top of the Spotify window <b>in the center</b> to open search and options on the left.",
+  );
 })();

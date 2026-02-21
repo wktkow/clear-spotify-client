@@ -8,9 +8,9 @@ Opinionated Spotify client reducing screen clutter and improving readability.
 
 ![On Hover Search Bar](images/onhover.gif)
 
-## Embeded Audio Visalizer! :D
+## Embeded Audio Visualizer! :D
 
-![Embeded Audio Visualizer](images/visualizer.png)
+[![Embedded Audio Visualizer](https://img.youtube.com/vi/fwry72jtBTE/0.jpg)](https://youtu.be/fwry72jtBTE)
 
 ## Installation
 
@@ -18,7 +18,7 @@ Opinionated Spotify client reducing screen clutter and improving readability.
 
 0. Make sure you have Spotify installed and you are logged in.
 
-1. Open PowerShell **_(as administrator)_** and paste:
+1. Open PowerShell and paste:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/powershell/install.ps1 | iex
@@ -36,7 +36,7 @@ iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/pow
 
 ### On Windows:
 
-Open PowerShell **_(as administrator)_** and paste:
+Open PowerShell and paste:
 
 ```powershell
 iwr -useb https://raw.githubusercontent.com/wktkow/clear-spotify-client/main/powershell/uninstall.ps1 | iex
