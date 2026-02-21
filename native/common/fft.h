@@ -11,6 +11,13 @@
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
+
+// MSVC does not define M_PI from <cmath> unless _USE_MATH_DEFINES is set
+// before the first include — which we can't guarantee in a header-only lib.
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #include "protocol.h"
 
 // ---- Tuning constants ----

@@ -1338,11 +1338,23 @@ button.main-playPauseButton-button {
   transition-delay: 0s;
 }
 
-/* Windows 11 frame overlap fix – the OS draws an invisible ~8px resize grip
-   inside the top of every window, and -webkit-app-region:drag on the topBar
-   underneath lets Windows treat the area as a title-bar (snap-layout popup).
-   Push the bar below the grip zone and mark it no-drag so events reach CSS.
-   Also covers kebab dropdown and settings/vis-settings modals. */
+/* Windows 11 frame overlap fix.
+   Problem 1: The OS draws an invisible ~8px resize grip at the top of every
+   window that eats mouse events — CSS :hover on the nav bar can't fire.
+   Problem 2: The topbar children carry -webkit-app-region:drag which Windows
+   treats as a title-bar, triggering snap-layout overlays and blocking hover.
+   Problem 3: The nav bar is normally opacity:0, and Chromium may skip
+   opacity-0 elements when computing drag regions — so no-drag on the nav bar
+   alone stops working after the first interaction.
+
+   Fix:
+   a) Push the nav bar 8px below the OS resize grip (hover can fire).
+   b) Mark all interactive overlays no-drag (safety net).
+   c) Carve a PERMANENT no-drag zone in the CENTER of the topbar via a
+      ::before pseudo-element that is always rendered (never opacity:0).
+      Because it's a pseudo-child of the drag container, Chromium's region
+      computation reliably subtracts it — matching the same pattern used by
+      .main-topBar-historyButtons * { no-drag } in the base theme. */
 #global-nav-bar,
 #global-nav-bar *,
 .clear-kebab-dropdown,
@@ -1355,6 +1367,21 @@ button.main-playPauseButton-button {
 }
 .spotify__os--is-windows #global-nav-bar {
   top: 8px !important;
+}
+/* Permanent no-drag center zone on the topbar — always rendered, immune to
+   opacity changes and React re-renders.  40rem covers the search bar + kebab
+   with margin; sides of the topbar remain draggable for window movement. */
+.spotify__os--is-windows .main-topBar-container::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40rem;
+  height: 100%;
+  -webkit-app-region: no-drag !important;
+  pointer-events: none;
+  z-index: 11;
 }
 
 #global-nav-bar::after {
