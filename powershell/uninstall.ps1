@@ -111,11 +111,11 @@ if ($spicetifyCmd) {
 Write-Step "Restoring Spotify to vanilla"
 
 if ($spicetifyCmd) {
-    try {
-        & spicetify restore
-        Write-Ok "Spotify restored to vanilla state"
-    } catch {
+    & spicetify restore 2>$null
+    if ($LASTEXITCODE -ne 0) {
         Write-Warn "spicetify restore returned non-zero (may already be vanilla)"
+    } else {
+        Write-Ok "Spotify restored to vanilla state"
     }
 } else {
     Write-Warn "spicetify not found — skipping restore (Spotify may need reinstall)"
@@ -129,7 +129,8 @@ $updateBlocker = "$env:LOCALAPPDATA\Spotify\Update"
 if ((Test-Path $updateBlocker) -and -not (Test-Path $updateBlocker -PathType Container)) {
     Set-ItemProperty -Path $updateBlocker -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
     Remove-Item $updateBlocker -Force -ErrorAction SilentlyContinue
-    Write-Ok "Removed Update blocker file"
+    if (-not (Test-Path $updateBlocker)) { Write-Ok "Removed Update blocker file" }
+    else { Write-Warn "Could not remove Update blocker file — delete manually: $updateBlocker" }
 }
 
 # Remove the read-only SpotifyMigrator.exe placeholder
@@ -139,7 +140,8 @@ if (Test-Path $migrator) {
     if ($migratorSize -eq 0) {
         Set-ItemProperty -Path $migrator -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
         Remove-Item $migrator -Force -ErrorAction SilentlyContinue
-        Write-Ok "Removed SpotifyMigrator.exe placeholder"
+        if (-not (Test-Path $migrator)) { Write-Ok "Removed SpotifyMigrator.exe placeholder" }
+        else { Write-Warn "Could not remove SpotifyMigrator.exe placeholder — delete manually: $migrator" }
     }
 }
 
@@ -181,10 +183,10 @@ if ($spicetifyDir) {
 
     # Reset spicetify config
     if ($spicetifyCmd) {
-        try { & spicetify config current_theme "" } catch {}
-        try { & spicetify config inject_theme_js 0 } catch {}
-        try { & spicetify config color_scheme "" } catch {}
-        try { & spicetify config extensions "" } catch {}
+        & spicetify config current_theme "" 2>$null
+        & spicetify config inject_theme_js 0 2>$null
+        & spicetify config color_scheme "" 2>$null
+        & spicetify config extensions "" 2>$null
         Write-Ok "Reset spicetify configuration"
     }
 } else {
