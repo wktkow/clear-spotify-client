@@ -34,7 +34,7 @@ $baseUrl = "https://raw.githubusercontent.com/$repo/$branch"
 $themeFiles = @("user.css", "color.ini", "theme.js")
 $themeName = "Clear"
 
-$script:totalSteps = 12
+$script:totalSteps = 13
 $script:currentStep = 0
 $script:installTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -406,7 +406,36 @@ else { Write-Ok "Theme JS injection enabled" }
 if ($LASTEXITCODE -ne 0) { Write-Warn "Failed to reset color scheme (exit code $LASTEXITCODE)" }
 else { Write-Ok "Color scheme reset to default" }
 
-# ── 9. Apply ────────────────────────────────────────────────────────────────
+# ── 9. Install Spicetify Marketplace ─────────────────────────────────────────
+Write-Step "Installing Spicetify Marketplace" "5s"
+
+$spiceUserData = Join-Path $env:APPDATA "spicetify"
+$marketDir = Join-Path $spiceUserData "CustomApps\marketplace"
+if (Test-Path $marketDir) { Remove-Item -Recurse -Force $marketDir }
+New-Item -ItemType Directory -Force -Path $marketDir | Out-Null
+
+$marketZip = Join-Path $env:TEMP "marketplace.zip"
+try {
+    Invoke-WebRequest -Uri "https://github.com/spicetify/marketplace/releases/latest/download/marketplace.zip" -OutFile $marketZip -UseBasicParsing
+    Expand-Archive -Path $marketZip -DestinationPath $marketDir -Force
+    # The zip contains a marketplace-dist folder — move its contents up
+    $distDir = Join-Path $marketDir "marketplace-dist"
+    if (Test-Path $distDir) {
+        Get-ChildItem -Path $distDir | Move-Item -Destination $marketDir -Force
+        Remove-Item -Path $distDir -Recurse -Force
+    }
+    Remove-Item -Path $marketZip -Force -ErrorAction SilentlyContinue
+    # Remove old custom app name if exists, add new one
+    & spicetify config custom_apps spicetify-marketplace- 2>$null
+    & spicetify config custom_apps marketplace
+    if ($LASTEXITCODE -eq 0) { Write-Ok "Marketplace installed" }
+    else { Write-Warn "Failed to register Marketplace custom app" }
+} catch {
+    Write-Warn "Could not download Marketplace: $_"
+    Write-Warn "You can install it later from: https://github.com/spicetify/marketplace"
+}
+
+# ── 10. Apply ───────────────────────────────────────────────────────────────
 Write-Step "Applying theme" "30-60s"
 & spicetify backup apply
 if ($LASTEXITCODE -ne 0) {
@@ -420,7 +449,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Ok "Theme applied successfully"
 
-# ── 10. Build and install audio visualizer daemon ─────────────────────────────
+# ── 11. Build and install audio visualizer daemon ─────────────────────────────
 Write-Step "Setting up audio visualizer daemon" "1-5min"
 
 # Permanent install location (survives theme folder wipes)
@@ -649,7 +678,7 @@ if ($nativeOk) {
 # Clean up build dir
 if (Test-Path $buildDir) { Remove-Item -Recurse -Force $buildDir }
 
-# ── 11. Launch Spotify ───────────────────────────────────────────────────────
+# ── 12. Launch Spotify ───────────────────────────────────────────────────────
 Write-Step "Launching Spotify" "2s"
 
 if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {

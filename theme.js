@@ -32,12 +32,29 @@
   }
 
   function onPlayPauseChange(callback) {
-    function attach() {
+    // Observe the stable now-playing bar container instead of the volatile
+    // play/pause button itself.  React may unmount/remount the button on
+    // track changes or video card transitions, which would orphan an
+    // observer attached directly to the button element.
+    let lastLabel = "";
+    function check() {
       const btn = document.querySelector(
         '[data-testid="control-button-playpause"]',
       );
-      if (!btn) return false;
-      new MutationObserver(() => callback()).observe(btn, {
+      const label = btn?.getAttribute("aria-label") || "";
+      if (label && label !== lastLabel) {
+        lastLabel = label;
+        callback();
+      }
+    }
+    function attach() {
+      const bar = document.querySelector(
+        '.Root__now-playing-bar, [data-testid="now-playing-bar"]',
+      );
+      if (!bar) return false;
+      new MutationObserver(() => check()).observe(bar, {
+        childList: true,
+        subtree: true,
         attributes: true,
         attributeFilter: ["aria-label"],
       });

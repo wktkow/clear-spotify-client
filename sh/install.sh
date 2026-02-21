@@ -267,6 +267,39 @@ green "Theme JS injection enabled"
 spicetify config color_scheme ""
 green "Color scheme reset to default"
 
+# ── 9b. Install Spicetify Marketplace ────────────────────────────────────────
+cyan "Installing Spicetify Marketplace"
+
+SPICETIFY_CONFIG_DIR=""
+if SPICE_CONFIG=$(spicetify path -c 2>/dev/null); then
+    SPICETIFY_CONFIG_DIR="$(dirname "$SPICE_CONFIG")"
+fi
+if [[ -z "$SPICETIFY_CONFIG_DIR" ]]; then
+    SPICETIFY_CONFIG_DIR="$HOME/.config/spicetify"
+fi
+
+MARKET_DIR="$SPICETIFY_CONFIG_DIR/CustomApps/marketplace"
+rm -rf "$MARKET_DIR" 2>/dev/null || true
+mkdir -p "$MARKET_DIR"
+
+MARKET_ZIP=$(mktemp /tmp/marketplace-XXXXXX.zip)
+if curl -fsSL "https://github.com/spicetify/marketplace/releases/latest/download/marketplace.zip" -o "$MARKET_ZIP"; then
+    unzip -q -o "$MARKET_ZIP" -d "$MARKET_DIR"
+    # The zip contains a marketplace-dist folder — move its contents up
+    if [[ -d "$MARKET_DIR/marketplace-dist" ]]; then
+        mv "$MARKET_DIR/marketplace-dist"/* "$MARKET_DIR/" 2>/dev/null || true
+        rm -rf "$MARKET_DIR/marketplace-dist"
+    fi
+    rm -f "$MARKET_ZIP"
+    # Remove old custom app name if exists, add new one
+    spicetify config custom_apps spicetify-marketplace- 2>/dev/null || true
+    spicetify config custom_apps marketplace
+    green "Marketplace installed"
+else
+    yellow "Could not download Marketplace — you can install it later"
+    rm -f "$MARKET_ZIP"
+fi
+
 cyan "Applying theme"
 if spicetify backup apply 2>/dev/null; then
     green "Theme applied successfully"
