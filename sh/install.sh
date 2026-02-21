@@ -10,6 +10,7 @@ set -euo pipefail
 # ── LOCKED VERSIONS — DO NOT CHANGE ─────────────────────────────────────────
 SPICETIFY_VERSION="2.42.11"
 SPOTIFY_VERSION="1.2.74.477.g3be53afe"
+MARKETPLACE_VERSION="1.0.8"
 SPOTIFY_FLATPAK_COMMIT="d0881734d9f85a709418c4e671116b0c87baf24eebfa2a47a473d11fefe8f223"
 SPICETIFY_TAR_URL="https://github.com/spicetify/cli/releases/download/v${SPICETIFY_VERSION}/spicetify-${SPICETIFY_VERSION}-linux-amd64.tar.gz"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -267,8 +268,8 @@ green "Theme JS injection enabled"
 spicetify config color_scheme ""
 green "Color scheme reset to default"
 
-# ── 9b. Install Spicetify Marketplace ────────────────────────────────────────
-cyan "Installing Spicetify Marketplace"
+# ── 9b. Install Spicetify Marketplace v${MARKETPLACE_VERSION} (pinned) ──────────────────────
+cyan "Installing Spicetify Marketplace v$MARKETPLACE_VERSION"
 
 SPICETIFY_CONFIG_DIR=""
 if SPICE_CONFIG=$(spicetify path -c 2>/dev/null); then
@@ -282,8 +283,9 @@ MARKET_DIR="$SPICETIFY_CONFIG_DIR/CustomApps/marketplace"
 rm -rf "$MARKET_DIR" 2>/dev/null || true
 mkdir -p "$MARKET_DIR"
 
+MARKET_ZIP_URL="$BASE_URL/installers/marketplace-v${MARKETPLACE_VERSION}.zip"
 MARKET_ZIP=$(mktemp /tmp/marketplace-XXXXXX.zip)
-if curl -fsSL "https://github.com/spicetify/marketplace/releases/latest/download/marketplace.zip" -o "$MARKET_ZIP"; then
+if curl -fsSL "$MARKET_ZIP_URL" -o "$MARKET_ZIP"; then
     unzip -q -o "$MARKET_ZIP" -d "$MARKET_DIR"
     # The zip contains a marketplace-dist folder — move its contents up
     if [[ -d "$MARKET_DIR/marketplace-dist" ]]; then
@@ -294,7 +296,7 @@ if curl -fsSL "https://github.com/spicetify/marketplace/releases/latest/download
     # Remove old custom app name if exists, add new one
     spicetify config custom_apps spicetify-marketplace- 2>/dev/null || true
     spicetify config custom_apps marketplace
-    green "Marketplace installed"
+    green "Marketplace v$MARKETPLACE_VERSION installed"
 else
     yellow "Could not download Marketplace — you can install it later"
     rm -f "$MARKET_ZIP"

@@ -22,6 +22,7 @@ $ErrorActionPreference = "Stop"
 # ── LOCKED VERSIONS — DO NOT CHANGE ─────────────────────────────────────────
 $spicetifyVersion = "2.42.11"
 $spotifyVersion = "1.2.74.477.g3be53afe"
+$marketplaceVersion = "1.0.8"
 $spicetifyZipUrl = "https://github.com/spicetify/cli/releases/download/v${spicetifyVersion}/spicetify-${spicetifyVersion}-windows-x64.zip"
 $spotifyInstallerUrl = "https://github.com/wktkow/clear-spotify-client/raw/main/installers/spotify_installer-${spotifyVersion}.exe"
 $spotifyInstallerUrlCdn = "https://upgrade.scdn.co/upgrade/client/win32-x86_64/spotify_installer-${spotifyVersion}-1297.exe"
@@ -406,17 +407,18 @@ else { Write-Ok "Theme JS injection enabled" }
 if ($LASTEXITCODE -ne 0) { Write-Warn "Failed to reset color scheme (exit code $LASTEXITCODE)" }
 else { Write-Ok "Color scheme reset to default" }
 
-# ── 9. Install Spicetify Marketplace ─────────────────────────────────────────
-Write-Step "Installing Spicetify Marketplace" "5s"
+# ── 9. Install Spicetify Marketplace v${marketplaceVersion} (pinned) ────────────────────────
+Write-Step "Installing Spicetify Marketplace v$marketplaceVersion" "5s"
 
 $spiceUserData = Join-Path $env:APPDATA "spicetify"
 $marketDir = Join-Path $spiceUserData "CustomApps\marketplace"
 if (Test-Path $marketDir) { Remove-Item -Recurse -Force $marketDir }
 New-Item -ItemType Directory -Force -Path $marketDir | Out-Null
 
-$marketZip = Join-Path $env:TEMP "marketplace.zip"
+$marketZipUrl = "$baseUrl/installers/marketplace-v${marketplaceVersion}.zip"
+$marketZip = Join-Path $env:TEMP "marketplace-v${marketplaceVersion}.zip"
 try {
-    Invoke-WebRequest -Uri "https://github.com/spicetify/marketplace/releases/latest/download/marketplace.zip" -OutFile $marketZip -UseBasicParsing
+    Invoke-WebRequest -Uri $marketZipUrl -OutFile $marketZip -UseBasicParsing
     Expand-Archive -Path $marketZip -DestinationPath $marketDir -Force
     # The zip contains a marketplace-dist folder — move its contents up
     $distDir = Join-Path $marketDir "marketplace-dist"
@@ -428,7 +430,7 @@ try {
     # Remove old custom app name if exists, add new one
     & spicetify config custom_apps spicetify-marketplace- 2>$null
     & spicetify config custom_apps marketplace
-    if ($LASTEXITCODE -eq 0) { Write-Ok "Marketplace installed" }
+    if ($LASTEXITCODE -eq 0) { Write-Ok "Marketplace v$marketplaceVersion installed" }
     else { Write-Warn "Failed to register Marketplace custom app" }
 } catch {
     Write-Warn "Could not download Marketplace: $_"
