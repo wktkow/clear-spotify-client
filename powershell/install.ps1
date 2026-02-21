@@ -22,9 +22,10 @@ $ErrorActionPreference = "Stop"
 # ── LOCKED VERSIONS — DO NOT CHANGE ─────────────────────────────────────────
 $spicetifyVersion = "2.42.11"
 $spotifyVersion = "1.2.74.477.g3be53afe"
-$spotifyShortVersion = "1.2.74.477"
 $spicetifyZipUrl = "https://github.com/spicetify/cli/releases/download/v${spicetifyVersion}/spicetify-${spicetifyVersion}-windows-x64.zip"
-$spotifyInstallerUrl = "https://upgrade.scdn.co/upgrade/client/win32-x86/spotify_installer-${spotifyVersion}.exe"
+$spotifyInstallerUrl = "https://github.com/wktkow/clear-spotify-client/raw/main/installers/spotify_installer-${spotifyVersion}.exe"
+$spotifyInstallerUrlCdn = "https://upgrade.scdn.co/upgrade/client/win32-x86_64/spotify_installer-${spotifyVersion}-1297.exe"
+$spotifyInstallerSha256 = "CA3CE1B29E601123E1F4501D8A76310A00C8578D3A94935D1C618B2BF6AFDB42"
 # ─────────────────────────────────────────────────────────────────────────────
 
 $repo = "wktkow/clear-spotify-client"
@@ -168,35 +169,55 @@ Write-Step "Installing Spotify $spotifyVersion"
 $spotifyInstaller = Join-Path $env:TEMP "spotify_installer.exe"
 $spotifyInstalled = $false
 
-# Method 1: Download specific version from Spotify CDN
-Write-Ok "Trying Spotify CDN download..."
+function Install-SpotifyFromFile {
+    param([string]$InstallerPath)
+    # Verify SHA256
+    $hash = (Get-FileHash -Path $InstallerPath -Algorithm SHA256).Hash
+    if ($hash -ne $spotifyInstallerSha256) {
+        Write-Warn "SHA256 mismatch: expected $spotifyInstallerSha256 got $hash"
+        return $false
+    }
+    Write-Ok "SHA256 verified"
+    $proc = Start-Process -FilePath $InstallerPath -PassThru
+    $proc | Wait-Process -Timeout 120 -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 5
+    Get-Process -Name "Spotify" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    return (Test-Path "$env:APPDATA\Spotify\Spotify.exe")
+}
+
+# Method 1: Download from our Git LFS (always available)
+Write-Ok "Downloading Spotify installer from project repository..."
 try {
     Invoke-WebRequest -Uri $spotifyInstallerUrl -OutFile $spotifyInstaller -UseBasicParsing
-    if (Test-Path $spotifyInstaller) {
-        Write-Ok "Downloaded Spotify installer"
-        $proc = Start-Process -FilePath $spotifyInstaller -PassThru
-        # Wait for the installer to finish (Spotify installers are quick)
-        $proc | Wait-Process -Timeout 120 -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 5
-        # Kill Spotify if it auto-launched
-        Get-Process -Name "Spotify" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
+    if ((Test-Path $spotifyInstaller) -and (Install-SpotifyFromFile $spotifyInstaller)) {
+        $spotifyInstalled = $true
+        Write-Ok "Spotify installed from repository"
+    }
+} catch {
+    Write-Warn "Repository download failed: $_"
+}
+
+# Method 2: Fallback to Spotify CDN
+if (-not $spotifyInstalled) {
+    Write-Warn "Trying Spotify CDN fallback..."
+    try {
+        Invoke-WebRequest -Uri $spotifyInstallerUrlCdn -OutFile $spotifyInstaller -UseBasicParsing
+        if ((Test-Path $spotifyInstaller) -and (Install-SpotifyFromFile $spotifyInstaller)) {
             $spotifyInstalled = $true
             Write-Ok "Spotify installed from CDN"
         }
+    } catch {
+        Write-Warn "CDN download failed: $_"
     }
-} catch {
-    Write-Warn "CDN download failed: $_"
 }
 
-# Method 2: Try winget with exact version
+# Method 3: Try winget with exact version
 if (-not $spotifyInstalled -and (Get-Command winget -ErrorAction SilentlyContinue)) {
     Write-Warn "Trying winget install..."
     try {
-        & winget install --id Spotify.Spotify --version $spotifyShortVersion --accept-source-agreements --accept-package-agreements --force --silent 2>$null
+        & winget install --id Spotify.Spotify --version $spotifyVersion --accept-source-agreements --accept-package-agreements --force --silent 2>$null
         Start-Sleep -Seconds 5
-        # Kill Spotify if it auto-launched
         Get-Process -Name "Spotify" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
         if (Test-Path "$env:APPDATA\Spotify\Spotify.exe") {
